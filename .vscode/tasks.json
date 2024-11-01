@@ -1,0 +1,30 @@
+// .vscode/tasks.json
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "watch",
+      "type": "shell",
+      "command": "tsc --watch",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "typescript",
+        "applyTo": "closedDocuments",
+        "pattern": {
+          "regexp": "^(.*\\.ts)\\((\\d+),(\\d+)\\):\\s+(error)\\s+(TS\\d+):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "code": 5,
+          "message": 6
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "\\[.*\\] Starting compilation in watch mode.*",
+          "endsPattern": "\\[.*\\] Found 0 errors\\. Watching for file changes\\."
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "name": "vscode-sieve-formatter",
+  "displayName": "Sieve Auto Formatter",
+  "description": "Removes trailing commas from Sieve lists and function calls",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:brokenalarms/vscode-sieve-formatter.git"
+  },
+  "version": "0.0.1",
+  "publisher": "brokenalarms",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:sieve"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "sieve",
+        "extensions": [
+          ".sieve"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "formatters": [
+      {
+        "language": "sieve",
+        "provideDocumentFormattingEdits": true
+      }]
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "compile": "tsc -p ./"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vscode": "^1.1.37",
+    "vscode-test": "^1.6.1"
+  }
+}
