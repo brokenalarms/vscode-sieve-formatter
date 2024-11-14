@@ -3,8 +3,8 @@ import * as vscode from 'vscode';
 
 function removeTrailingCommas(text: string): string {
   // Match a comma followed by any whitespace or newlines, then a closing bracket
-  const listRegex = /,([\s\r\n]*(\)|\]))/g;
-  return text.replace(listRegex, '$1');
+  const listRegex = /",([\s\r\n]*(\)|\]))/g;
+  return text.replace(listRegex, '"$1');
 }
 
 // Deactivate the extension
