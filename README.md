@@ -101,6 +101,7 @@ All transformations run when you format a document (`Shift+Alt+F` / **Format Doc
 | `sieve.formatter.indentBlocks` | `true` | Re-indent the contents of `if`, `elsif`, and `else` blocks based on brace nesting depth. |
 | `sieve.formatter.joinElsifElse` | `true` | Join a lone `}` line with a following `elsif` or `else` onto the same line. |
 | `sieve.formatter.normalizeBlankLines` | `true` | Collapse runs of more than one consecutive blank line into a single blank line. |
+| `sieve.formatter.sortRequire` | `false` | Sort extensions inside `require [...]` alphabetically. Has no effect on a bare `require "string"` or a single-extension list. |
 
 The indentation inside expanded lists and block bodies respects your VS Code editor settings (spaces vs. tabs, tab size).
 

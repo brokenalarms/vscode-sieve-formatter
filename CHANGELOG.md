@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **Sorted `require`** (`sieve.formatter.sortRequire`, default off) — sorts extensions inside `require [...]` alphabetically (case-insensitive) before any expansion pass.
+- Extension icon (tabler `filter-spark`, 128×128 PNG).
+
 ## [0.2.0]
 
 ### Added

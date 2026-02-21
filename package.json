@@ -11,6 +11,7 @@
     "url": "https://github.com/brokenalarms/vscode-sieve-formatter/issues"
   },
   "homepage": "https://github.com/brokenalarms/vscode-sieve-formatter#readme",
+  "icon": "icon.png",
   "version": "0.2.0",
   "publisher": "brokenalarms",
   "categories": [
@@ -76,6 +77,11 @@
           "type": "boolean",
           "default": true,
           "description": "Collapse runs of more than one consecutive blank line into a single blank line."
+        },
+        "sieve.formatter.sortRequire": {
+          "type": "boolean",
+          "default": false,
+          "description": "Sort the extensions inside require [...] alphabetically. Has no effect on a bare require \"string\" or a single-extension list."
         }
       }
     }
