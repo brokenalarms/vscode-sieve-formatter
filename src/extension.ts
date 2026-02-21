@@ -18,6 +18,7 @@ export function activate(context: vscode.ExtensionContext) {
         const expandLists = config.get<boolean>('expandLists', true);
         const alwaysExpandRequire = config.get<boolean>('alwaysExpandRequire', false);
         const indentBlocksSetting = config.get<boolean>('indentBlocks', true);
+        const joinElsifElseSetting = config.get<boolean>('joinElsifElse', true);
         const normalizeBlankLinesSetting = config.get<boolean>('normalizeBlankLines', true);
 
         const fullText = document.getText();
@@ -26,6 +27,7 @@ export function activate(context: vscode.ExtensionContext) {
           expandLists,
           alwaysExpandRequire,
           indentBlocks: indentBlocksSetting,
+          joinElsifElse: joinElsifElseSetting,
           normalizeBlankLines: normalizeBlankLinesSetting,
         });
 

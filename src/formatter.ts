@@ -49,6 +49,56 @@ function countCharsOutsideStrings(text: string, ch: string): number {
 }
 
 /**
+ * Remove `/* ... */` block-comment spans from a single line.
+ *
+ * Returns:
+ *   effective        — the line content with each comment span replaced by a
+ *                      single space (so surrounding tokens remain parseable).
+ *   opensBlockComment — true when `/*` was found on this line without a
+ *                       matching `*‌/`, meaning the comment continues onto
+ *                       subsequent lines.
+ *
+ * This function does NOT handle the case where the line is already inside a
+ * block comment that started on a previous line — the caller is responsible for
+ * tracking that state (see `indentBlocks`).
+ */
+function stripLineBlockComments(line: string): { effective: string; opensBlockComment: boolean } {
+  let result = '';
+  let inString = false;
+  let i = 0;
+
+  while (i < line.length) {
+    const ch = line[i];
+
+    if (inString) {
+      result += ch;
+      if (ch === '"') {
+        inString = false;
+      }
+      i++;
+    } else if (ch === '"') {
+      inString = true;
+      result += ch;
+      i++;
+    } else if (ch === '/' && i + 1 < line.length && line[i + 1] === '*') {
+      const closeIdx = line.indexOf('*/', i + 2);
+      if (closeIdx === -1) {
+        // Block comment extends past end of this line.
+        return { effective: result, opensBlockComment: true };
+      }
+      // Block comment closes on this line — replace the whole span with a space.
+      result += ' ';
+      i = closeIdx + 2;
+    } else {
+      result += ch;
+      i++;
+    }
+  }
+
+  return { effective: result, opensBlockComment: false };
+}
+
+/**
  * Remove trailing commas before a closing bracket or parenthesis.
  * e.g. ["a", "b",]  →  ["a", "b"]
  *      fileinto("x",)  →  fileinto("x")
@@ -160,13 +210,17 @@ export function normalizeMultilineListIndentation(
  * Lines that fall inside a multi-line `[...]` list are left verbatim —
  * their indentation is the responsibility of `normalizeMultilineListIndentation`.
  *
- * A line comment (`# ...`) on the same line as a `{` or `}` is stripped before
- * the brace check so that `if condition { # comment` is treated correctly.
+ * Lines that are inside a multi-line `/* ... *‌/` block comment are also left
+ * verbatim so that comment formatting chosen by the author is preserved.
+ *
+ * Inline `/* ... *‌/` comments and `# ...` line comments on the same line as
+ * a `{` or `}` are stripped before the brace check.
  */
 export function indentBlocks(text: string, indent: string = '  '): string {
   const lines = text.split('\n');
   let blockLevel = 0;
   let bracketDepth = 0;
+  let inBlockComment = false;
   const result: string[] = [];
 
   for (const line of lines) {
@@ -177,7 +231,7 @@ export function indentBlocks(text: string, indent: string = '  '): string {
       continue;
     }
 
-    // Inside a multi-line list — preserve the line verbatim and track depth.
+    // Inside a multi-line list — preserve verbatim and track bracket depth.
     if (bracketDepth > 0) {
       result.push(line);
       bracketDepth +=
@@ -186,10 +240,10 @@ export function indentBlocks(text: string, indent: string = '  '): string {
       if (bracketDepth < 0) {
         bracketDepth = 0;
       }
-      // Handle `] {` — the list closed on this line and a block was opened.
-      // e.g. the closing line of a multi-line test argument followed by the block open.
+      // Handle `] {` — list closed and block opened on the same line.
       if (bracketDepth === 0) {
-        const withoutComment = trimmed.replace(/#.*$/, '').trimEnd();
+        const { effective } = stripLineBlockComments(trimmed);
+        const withoutComment = effective.replace(/#.*$/, '').trimEnd();
         if (withoutComment.endsWith('{')) {
           blockLevel++;
         }
@@ -197,8 +251,35 @@ export function indentBlocks(text: string, indent: string = '  '): string {
       continue;
     }
 
-    // Strip trailing line comment before checking brace structure.
-    const withoutComment = trimmed.replace(/#.*$/, '').trimEnd();
+    // Inside a multi-line block comment — preserve verbatim.
+    if (inBlockComment) {
+      result.push(line);
+      const closeIdx = trimmed.indexOf('*/');
+      if (closeIdx !== -1) {
+        inBlockComment = false;
+        // Check whether there is significant content after */ on this line.
+        const afterClose = trimmed.slice(closeIdx + 2);
+        const { effective, opensBlockComment } = stripLineBlockComments(afterClose);
+        inBlockComment = opensBlockComment;
+        const withoutLineComment = effective.replace(/#.*$/, '').trimEnd();
+        if (withoutLineComment.endsWith('{')) {
+          blockLevel++;
+        }
+        bracketDepth +=
+          countCharsOutsideStrings(effective, '[') -
+          countCharsOutsideStrings(effective, ']');
+        if (bracketDepth < 0) {
+          bracketDepth = 0;
+        }
+      }
+      continue;
+    }
+
+    // Normal line — strip block comments for brace and bracket analysis.
+    const { effective, opensBlockComment } = stripLineBlockComments(trimmed);
+    inBlockComment = opensBlockComment;
+
+    const withoutLineComment = effective.replace(/#.*$/, '').trimEnd();
 
     // A line starting with `}` closes the current block before being rendered.
     if (trimmed[0] === '}') {
@@ -208,14 +289,14 @@ export function indentBlocks(text: string, indent: string = '  '): string {
     result.push(indent.repeat(blockLevel) + trimmed);
 
     // A line ending with `{` opens a new block for subsequent lines.
-    if (withoutComment.endsWith('{')) {
+    if (withoutLineComment.endsWith('{')) {
       blockLevel++;
     }
 
-    // Track bracket depth so content inside [...] is skipped on next lines.
+    // Track bracket depth so content inside [...] is skipped on subsequent lines.
     bracketDepth +=
-      countCharsOutsideStrings(trimmed, '[') -
-      countCharsOutsideStrings(trimmed, ']');
+      countCharsOutsideStrings(effective, '[') -
+      countCharsOutsideStrings(effective, ']');
     if (bracketDepth < 0) {
       bracketDepth = 0;
     }
@@ -229,6 +310,50 @@ export function indentBlocks(text: string, indent: string = '  '): string {
  */
 export function normalizeBlankLines(text: string): string {
   return text.replace(/\n{3,}/g, '\n\n');
+}
+
+/**
+ * When `elsif` or `else` appears on a line by itself (possibly with leading
+ * whitespace) immediately after a line that is only `}`, join them onto the
+ * same line as the `}` so that Sieve control flow reads as a single construct.
+ *
+ * e.g.
+ *   }            →   } elsif condition {
+ *   elsif condition {
+ *
+ * Blank lines between `}` and `elsif`/`else` are consumed by the join.
+ * Already-joined `} elsif` / `} else` lines are left unchanged (idempotent).
+ */
+export function joinElsifElse(text: string): string {
+  const lines = text.split('\n');
+  const result: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+
+    // Only consider lines that are exactly `}` (no other content).
+    if (trimmed === '}') {
+      // Scan forward past blank lines to find the next non-empty line.
+      let j = i + 1;
+      while (j < lines.length && lines[j].trim() === '') {
+        j++;
+      }
+      if (j < lines.length) {
+        const nextTrimmed = lines[j].trim();
+        if (/^(elsif|else)\b/.test(nextTrimmed)) {
+          // Merge: append the keyword line to the `}` line, consuming any
+          // blank lines that appeared between them.
+          result.push(lines[i].replace(/\}\s*$/, '} ') + nextTrimmed);
+          i = j; // skip lines up to and including the elsif/else line
+          continue;
+        }
+      }
+    }
+
+    result.push(lines[i]);
+  }
+
+  return result.join('\n');
 }
 
 export interface FormatOptions {
@@ -260,6 +385,15 @@ export interface FormatOptions {
    */
   indentBlocks?: boolean;
   /**
+   * When true, join a lone `}` line with a following `elsif` or `else` line
+   * so that Sieve control flow reads as `} elsif ...` / `} else {` on a
+   * single line.
+   * Default: true.
+   *
+   * Controlled by the `sieve.formatter.joinElsifElse` VS Code setting.
+   */
+  joinElsifElse?: boolean;
+  /**
    * When true, collapse runs of more than one consecutive blank line into a
    * single blank line.
    * Default: true.
@@ -273,12 +407,13 @@ export interface FormatOptions {
  * Apply all formatting passes to a Sieve document.
  *
  * Pass order:
- *  1. removeTrailingCommas        — always
- *  2. expandListsToMultiline      — if expandLists
- *  3. indentBlocks                — if indentBlocks
- *  4. normalizeMultilineListIndentation — if expandLists (after indentBlocks so
- *                                         the base indent reflects the final line position)
- *  5. normalizeBlankLines         — if normalizeBlankLines
+ *  1. removeTrailingCommas              — always
+ *  2. expandListsToMultiline            — if expandLists
+ *  3. joinElsifElse                     — if joinElsifElse
+ *  4. indentBlocks                      — if indentBlocks
+ *  5. normalizeMultilineListIndentation — if expandLists (after indentBlocks so
+ *                                         the base indent reflects the final position)
+ *  6. normalizeBlankLines               — if normalizeBlankLines
  */
 export function formatDocument(text: string, options: FormatOptions = {}): string {
   const {
@@ -286,6 +421,7 @@ export function formatDocument(text: string, options: FormatOptions = {}): strin
     expandLists = true,
     alwaysExpandRequire = false,
     indentBlocks: shouldIndentBlocks = true,
+    joinElsifElse: shouldJoinElsifElse = true,
     normalizeBlankLines: shouldNormalizeBlankLines = true,
   } = options;
 
@@ -293,6 +429,10 @@ export function formatDocument(text: string, options: FormatOptions = {}): strin
 
   if (expandLists) {
     result = expandListsToMultiline(result, indent, /* skipRequire= */ !alwaysExpandRequire);
+  }
+
+  if (shouldJoinElsifElse) {
+    result = joinElsifElse(result);
   }
 
   if (shouldIndentBlocks) {

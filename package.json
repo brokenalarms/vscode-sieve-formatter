@@ -56,6 +56,11 @@
           "default": true,
           "description": "Re-indent the contents of if, elsif, and else blocks based on brace nesting depth."
         },
+        "sieve.formatter.joinElsifElse": {
+          "type": "boolean",
+          "default": true,
+          "description": "When elsif or else appears on its own line after a }, join it onto the same line as the } so that control flow reads as a single construct."
+        },
         "sieve.formatter.normalizeBlankLines": {
           "type": "boolean",
           "default": true,
