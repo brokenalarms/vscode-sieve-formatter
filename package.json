@@ -1,15 +1,21 @@
 {
   "name": "vscode-sieve-formatter",
-  "displayName": "Sieve Auto Formatter",
-  "description": "Formats Sieve email filter scripts: removes trailing commas and expands multi-item lists to multi-line for cleaner git diffs",
+  "displayName": "Sieve",
+  "description": "Syntax highlighting and formatter for Sieve email filter scripts: trailing comma removal, list expansion, block indentation, and more.",
+  "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git@github.com:brokenalarms/vscode-sieve-formatter.git"
+    "url": "https://github.com/brokenalarms/vscode-sieve-formatter.git"
   },
+  "bugs": {
+    "url": "https://github.com/brokenalarms/vscode-sieve-formatter/issues"
+  },
+  "homepage": "https://github.com/brokenalarms/vscode-sieve-formatter#readme",
   "version": "0.2.0",
   "publisher": "brokenalarms",
   "categories": [
-    "Formatters"
+    "Formatters",
+    "Programming Languages"
   ],
   "keywords": [
     "sieve",
@@ -29,16 +35,11 @@
     "languages": [
       {
         "id": "sieve",
+        "aliases": ["Sieve", "sieve"],
         "extensions": [
           ".sieve"
         ],
         "configuration": "./language-configuration.json"
-      }
-    ],
-    "formatters": [
-      {
-        "language": "sieve",
-        "provideDocumentFormattingEdits": true
       }
     ],
     "grammars": [
