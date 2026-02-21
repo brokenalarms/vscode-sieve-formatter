@@ -69,16 +69,4 @@ Current settings:
 
 Standard Sieve (RFC 5228) uses `[...]` for string lists — there are no `()`-style function calls. Tagged arguments (`:is`, `:contains`, `:matches`) are not affected by any formatter pass. The `require` command is always the first statement and lists extension dependencies.
 
-## Roadmap
-
-- Handle `text:` heredoc string literals in all passes — currently treated as code. In Sieve (RFC 5228 §2.4.2), `text:` begins a multi-line string literal that ends at a lone `.` on a line by itself (CRLF-terminated). Example:
-
-  ```sieve
-  vacation :reason text:
-  I am on holiday.
-  Please expect a delayed response.
-  .
-  ;
-  ```
-
-  All current formatter passes (`indentBlocks`, `expandListsToMultiline`, `normalizeMultilineListIndentation`) are unaware of this syntax, so they may corrupt the content between `text:` and the terminating `.`. The fix requires tracking a "inside heredoc" state in each pass, similar to how `inBlockComment` is tracked in `indentBlocks`.
+See [ROADMAP.md](ROADMAP.md) for planned work.
