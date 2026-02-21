@@ -35,6 +35,27 @@ if address :is "From" [
 
 Both transformations run together when you format a document (`Shift+Alt+F` / Format Document).
 
+`require` is left on a single line by default — see [Settings](#settings) to opt it in.
+
+## Settings
+
+| Setting | Default | Description |
+|---|---|---|
+| `sieve.formatter.alwaysExpandRequire` | `false` | Expand `require` to multi-line when it lists 2 or more extensions, using the same rule as other lists. Single-item `require` is never expanded. |
+
+With `alwaysExpandRequire` enabled:
+
+```sieve
+# Before
+require ["fileinto", "imap4flags"];
+
+# After
+require [
+  "fileinto",
+  "imap4flags"
+];
+```
+
 ## Usage
 
 1. Install the extension
