@@ -691,3 +691,222 @@ describe('formatDocument — joinElsifElse: false', () => {
     assert.ok(result.includes('\nelsif c2 {'), 'elsif should remain on its own line');
   });
 });
+
+// ---------------------------------------------------------------------------
+// text: heredoc handling
+// ---------------------------------------------------------------------------
+
+describe('indentBlocks — text: heredoc handling', () => {
+  it('does not re-indent lines inside a text: heredoc', () => {
+    const input = [
+      'if condition {',
+      'vacation :reason text:',
+      'I am on holiday.',
+      'Please expect a delayed response.',
+      '.',
+      ';',
+      '}',
+    ].join('\n');
+
+    const expected = [
+      'if condition {',
+      '  vacation :reason text:',
+      'I am on holiday.',           // preserved verbatim
+      'Please expect a delayed response.', // preserved verbatim
+      '.',                          // terminator preserved verbatim
+      '  ;',                        // re-indented after heredoc closes
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(indentBlocks(input), expected);
+  });
+
+  it('is idempotent when heredoc content is already in place', () => {
+    const input = [
+      'if condition {',
+      '  vacation :reason text:',
+      'I am on holiday.',
+      '.',
+      '  ;',
+      '}',
+    ].join('\n');
+    assert.strictEqual(indentBlocks(input), input);
+  });
+
+  it('correctly re-indents statements after the heredoc closes', () => {
+    const input = [
+      'vacation :reason text:',
+      'body line',
+      '.',
+      ';',
+      'if condition {',
+      'stop;',
+      '}',
+    ].join('\n');
+
+    const expected = [
+      'vacation :reason text:',
+      'body line',
+      '.',
+      ';',
+      'if condition {',
+      '  stop;',
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(indentBlocks(input), expected);
+  });
+
+  it('does not treat { inside a heredoc as a block opener', () => {
+    const input = [
+      'vacation :reason text:',
+      'Click here: {link}',
+      '.',
+      ';',
+    ].join('\n');
+
+    // Block level should remain 0 throughout — no spurious indent after heredoc.
+    const expected = [
+      'vacation :reason text:',
+      'Click here: {link}',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(indentBlocks(input), expected);
+  });
+});
+
+describe('expandListsToMultiline — text: heredoc handling', () => {
+  it('does not expand bracketed comma-separated text inside a heredoc', () => {
+    const input = [
+      'vacation :reason text:',
+      'Contact [Alice, Bob] for help.',
+      '.',
+      ';',
+    ].join('\n');
+    assert.strictEqual(expandListsToMultiline(input), input);
+  });
+
+  it('still expands lists outside the heredoc', () => {
+    const input = [
+      'if address :is "From" ["a@x.com", "b@x.com"] {',
+      'vacation :reason text:',
+      'No [square, bracket] lists here.',
+      '.',
+      ';',
+      '}',
+    ].join('\n');
+
+    const expected = [
+      'if address :is "From" [',
+      '  "a@x.com",',
+      '  "b@x.com"',
+      '] {',
+      'vacation :reason text:',
+      'No [square, bracket] lists here.',
+      '.',
+      ';',
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(expandListsToMultiline(input), expected);
+  });
+});
+
+describe('normalizeMultilineListIndentation — text: heredoc handling', () => {
+  it('does not reformat multi-line bracket content inside a heredoc', () => {
+    // A multi-line [...] that spans lines inside a heredoc must be left alone.
+    const input = [
+      'vacation :reason text:',
+      '[',
+      '  This is not a list,',
+      '  just message text.',
+      ']',
+      '.',
+      ';',
+    ].join('\n');
+    assert.strictEqual(normalizeMultilineListIndentation(input), input);
+  });
+});
+
+describe('formatDocument — text: heredoc handling', () => {
+  it('preserves heredoc body lines verbatim', () => {
+    const input = [
+      'require ["vacation"];',
+      '',
+      'if true {',
+      'vacation :reason text:',
+      'I am on holiday.',
+      '.',
+      ';',
+      '}',
+    ].join('\n');
+
+    const expected = [
+      'require ["vacation"];',
+      '',
+      'if true {',
+      '  vacation :reason text:',
+      'I am on holiday.',
+      '.',
+      '  ;',
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(formatDocument(input), expected);
+  });
+
+  it('is idempotent with a text: heredoc', () => {
+    const formatted = [
+      'require ["vacation"];',
+      '',
+      'if true {',
+      '  vacation :reason text:',
+      'I am on holiday.',
+      '.',
+      '  ;',
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(formatDocument(formatted), formatted);
+  });
+
+  it('does not corrupt bracketed text in the heredoc body', () => {
+    const input = [
+      'require ["vacation"];',
+      '',
+      'vacation :reason text:',
+      'Contact [Alice, Bob] for assistance.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(formatDocument(input), input);
+  });
+
+  it('formats code before and after a heredoc correctly', () => {
+    const input = [
+      'if address :is "From" ["a@x.com", "b@x.com"] {',
+      'vacation :reason text:',
+      'I am away.',
+      '.',
+      ';',
+      '}',
+    ].join('\n');
+
+    const expected = [
+      'if address :is "From" [',
+      '  "a@x.com",',
+      '  "b@x.com"',
+      '] {',
+      '  vacation :reason text:',
+      'I am away.',
+      '.',
+      '  ;',
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(formatDocument(input), expected);
+  });
+});

@@ -49,6 +49,53 @@ function countCharsOutsideStrings(text: string, ch: string): number {
 }
 
 /**
+ * Compute the character ranges [start, end) within `text` that fall inside
+ * `text:` heredoc string literals (RFC 5228 §2.4.2).
+ *
+ * A heredoc begins on the line *after* a line whose significant content
+ * (inline `# …` comments stripped, trailing whitespace trimmed) ends with
+ * `text:`.  It ends with — but does not include — the terminating dot line
+ * (a line whose trimmed content is exactly `.`).
+ *
+ * Example:
+ *   vacation :reason text:   ← opens heredoc; this line is NOT in the range
+ *   I am on holiday.         ← in range
+ *   .                        ← terminates heredoc; this line is NOT in the range
+ *   ;                        ← normal code again
+ */
+function computeHeredocRanges(text: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  const lines = text.split('\n');
+  let pos = 0;
+  let inHeredoc = false;
+  let heredocStart = -1;
+
+  for (const line of lines) {
+    if (inHeredoc) {
+      if (line.trim() === '.') {
+        ranges.push([heredocStart, pos]);
+        inHeredoc = false;
+      }
+    } else {
+      // Strip inline # comment and trailing whitespace to get significant content.
+      const significant = line.replace(/#.*$/, '').trimEnd();
+      if (significant.endsWith('text:')) {
+        inHeredoc = true;
+        heredocStart = pos + line.length + 1; // first char of the next line
+      }
+    }
+    pos += line.length + 1; // +1 for the '\n' separator
+  }
+
+  return ranges;
+}
+
+/** Return true when `offset` falls within any of the supplied ranges. */
+function isOffsetInRanges(offset: number, ranges: Array<[number, number]>): boolean {
+  return ranges.some(([start, end]) => offset >= start && offset < end);
+}
+
+/**
  * Remove `/* ... */` block-comment spans from a single line.
  *
  * Returns:
@@ -155,7 +202,14 @@ export function expandListsToMultiline(
   indent: string = '  ',
   skipRequire = true
 ): string {
+  const heredocRanges = computeHeredocRanges(text);
+
   return text.replace(/\[([^[\]\n]+)\]/g, (match, content: string, offset: number) => {
+    // Skip matches inside text: heredoc regions.
+    if (isOffsetInRanges(offset, heredocRanges)) {
+      return match;
+    }
+
     if (skipRequire) {
       const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
       const lineBefore = text.slice(lineStart, offset);
@@ -185,8 +239,15 @@ export function normalizeMultilineListIndentation(
   text: string,
   indent: string = '  '
 ): string {
+  const heredocRanges = computeHeredocRanges(text);
+
   // Match [...] that spans at least one newline; no nested brackets.
   return text.replace(/\[([^[\]]*\n[^[\]]*)\]/g, (match, content: string, offset: number) => {
+    // Skip matches inside text: heredoc regions.
+    if (isOffsetInRanges(offset, heredocRanges)) {
+      return match;
+    }
+
     // Determine the leading whitespace of the line that contains `[`.
     const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
     const linePrefix = text.slice(lineStart, offset);
@@ -221,6 +282,7 @@ export function indentBlocks(text: string, indent: string = '  '): string {
   let blockLevel = 0;
   let bracketDepth = 0;
   let inBlockComment = false;
+  let inHeredoc = false;
   const result: string[] = [];
 
   for (const line of lines) {
@@ -275,6 +337,15 @@ export function indentBlocks(text: string, indent: string = '  '): string {
       continue;
     }
 
+    // Inside a text: heredoc — preserve verbatim until the lone `.' terminator.
+    if (inHeredoc) {
+      result.push(line);
+      if (trimmed === '.') {
+        inHeredoc = false;
+      }
+      continue;
+    }
+
     // Normal line — strip block comments for brace and bracket analysis.
     const { effective, opensBlockComment } = stripLineBlockComments(trimmed);
     inBlockComment = opensBlockComment;
@@ -291,6 +362,11 @@ export function indentBlocks(text: string, indent: string = '  '): string {
     // A line ending with `{` opens a new block for subsequent lines.
     if (withoutLineComment.endsWith('{')) {
       blockLevel++;
+    }
+
+    // A line whose significant content ends with `text:` opens a heredoc.
+    if (withoutLineComment.endsWith('text:')) {
+      inHeredoc = true;
     }
 
     // Track bracket depth so content inside [...] is skipped on subsequent lines.
