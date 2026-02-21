@@ -2,6 +2,9 @@ import * as assert from 'assert';
 import {
   removeTrailingCommas,
   expandListsToMultiline,
+  normalizeMultilineListIndentation,
+  indentBlocks,
+  normalizeBlankLines,
   formatDocument,
 } from '../formatter';
 
@@ -47,6 +50,12 @@ describe('removeTrailingCommas', () => {
 
   it('does not touch commas that are not trailing', () => {
     const input = '["a", "b", "c"]';
+    assert.strictEqual(removeTrailingCommas(input), input);
+  });
+
+  it('does not remove a comma that is inside a string value', () => {
+    // The ,] sequence is inside the quoted string — must not be touched.
+    const input = 'if header :matches "Subject" ["pattern,]"] {';
     assert.strictEqual(removeTrailingCommas(input), input);
   });
 });
@@ -110,6 +119,176 @@ describe('expandListsToMultiline', () => {
   });
 });
 
+describe('normalizeMultilineListIndentation', () => {
+  it('normalizes over-indented items to baseIndent + indent', () => {
+    const input = 'fileinto [\n      "INBOX",\n      "Spam"\n  ]';
+    const expected = 'fileinto [\n  "INBOX",\n  "Spam"\n]';
+    assert.strictEqual(normalizeMultilineListIndentation(input), expected);
+  });
+
+  it('normalizes inconsistently indented items', () => {
+    const input = 'fileinto [\n    "INBOX",\n  "Spam"\n]';
+    const expected = 'fileinto [\n  "INBOX",\n  "Spam"\n]';
+    assert.strictEqual(normalizeMultilineListIndentation(input), expected);
+  });
+
+  it('is idempotent on already-correct indentation', () => {
+    const input = 'fileinto [\n  "INBOX",\n  "Spam"\n]';
+    assert.strictEqual(normalizeMultilineListIndentation(input), input);
+  });
+
+  it('uses the containing line indent as base', () => {
+    // The [ is on a line with 2-space base indent → items get 4 spaces
+    const input = '  fileinto [\n"INBOX",\n"Spam"\n]';
+    const expected = '  fileinto [\n    "INBOX",\n    "Spam"\n  ]';
+    assert.strictEqual(normalizeMultilineListIndentation(input), expected);
+  });
+
+  it('does not affect single-line lists', () => {
+    const input = 'fileinto ["INBOX", "Spam"]';
+    assert.strictEqual(normalizeMultilineListIndentation(input), input);
+  });
+
+  it('does not affect single-item multi-line list', () => {
+    // A single item that somehow ended up multi-line stays (no commas to split on)
+    const input = 'fileinto [\n  "INBOX"\n]';
+    assert.strictEqual(normalizeMultilineListIndentation(input), input);
+  });
+
+  it('respects a custom indent string', () => {
+    const input = 'fileinto [\n"INBOX",\n"Spam"\n]';
+    const expected = 'fileinto [\n\t"INBOX",\n\t"Spam"\n]';
+    assert.strictEqual(normalizeMultilineListIndentation(input, '\t'), expected);
+  });
+});
+
+describe('indentBlocks', () => {
+  it('indents the body of an if block', () => {
+    const input = 'if condition {\nfileinto "Inbox";\n}';
+    const expected = 'if condition {\n  fileinto "Inbox";\n}';
+    assert.strictEqual(indentBlocks(input), expected);
+  });
+
+  it('is idempotent on already-indented blocks', () => {
+    const input = 'if condition {\n  fileinto "Inbox";\n}';
+    assert.strictEqual(indentBlocks(input), input);
+  });
+
+  it('handles } elsif { correctly', () => {
+    const input = [
+      'if condition1 {',
+      'fileinto "A";',
+      '} elsif condition2 {',
+      'fileinto "B";',
+      '}',
+    ].join('\n');
+    const expected = [
+      'if condition1 {',
+      '  fileinto "A";',
+      '} elsif condition2 {',
+      '  fileinto "B";',
+      '}',
+    ].join('\n');
+    assert.strictEqual(indentBlocks(input), expected);
+  });
+
+  it('handles } else { correctly', () => {
+    const input = [
+      'if condition {',
+      'fileinto "A";',
+      '} else {',
+      'keep;',
+      '}',
+    ].join('\n');
+    const expected = [
+      'if condition {',
+      '  fileinto "A";',
+      '} else {',
+      '  keep;',
+      '}',
+    ].join('\n');
+    assert.strictEqual(indentBlocks(input), expected);
+  });
+
+  it('handles nested blocks', () => {
+    const input = [
+      'if outer {',
+      'if inner {',
+      'stop;',
+      '}',
+      'keep;',
+      '}',
+    ].join('\n');
+    const expected = [
+      'if outer {',
+      '  if inner {',
+      '    stop;',
+      '  }',
+      '  keep;',
+      '}',
+    ].join('\n');
+    assert.strictEqual(indentBlocks(input), expected);
+  });
+
+  it('preserves lines inside multi-line [...] verbatim', () => {
+    // Items inside [...] should not be re-indented by this pass.
+    const input = [
+      'if condition {',
+      'fileinto [',
+      '"A",',
+      '"B"',
+      '];',
+      '}',
+    ].join('\n');
+    const expected = [
+      'if condition {',
+      '  fileinto [',
+      '"A",',   // preserved verbatim
+      '"B"',    // preserved verbatim
+      '];',     // preserved verbatim
+      '}',
+    ].join('\n');
+    assert.strictEqual(indentBlocks(input), expected);
+  });
+
+  it('preserves empty lines', () => {
+    const input = 'if condition {\n\nfileinto "Inbox";\n}';
+    const expected = 'if condition {\n\n  fileinto "Inbox";\n}';
+    assert.strictEqual(indentBlocks(input), expected);
+  });
+
+  it('handles a # comment after { on the same line', () => {
+    const input = 'if condition { # open\nfileinto "Inbox";\n}';
+    const expected = 'if condition { # open\n  fileinto "Inbox";\n}';
+    assert.strictEqual(indentBlocks(input), expected);
+  });
+
+  it('does not change top-level statements with no blocks', () => {
+    const input = 'require ["fileinto"];\nfileinto "Inbox";';
+    assert.strictEqual(indentBlocks(input), input);
+  });
+});
+
+describe('normalizeBlankLines', () => {
+  it('collapses 3 consecutive newlines (2 blank lines) to 2 (1 blank line)', () => {
+    assert.strictEqual(normalizeBlankLines('a\n\n\nb'), 'a\n\nb');
+  });
+
+  it('collapses 4+ newlines down to 2', () => {
+    assert.strictEqual(normalizeBlankLines('a\n\n\n\nb'), 'a\n\nb');
+  });
+
+  it('does not change a single blank line', () => {
+    const input = 'a\n\nb';
+    assert.strictEqual(normalizeBlankLines(input), input);
+  });
+
+  it('is idempotent', () => {
+    const once = normalizeBlankLines('a\n\n\n\nb');
+    assert.strictEqual(normalizeBlankLines(once), once);
+  });
+});
+
 describe('formatDocument — expandLists: false', () => {
   it('still removes trailing commas', () => {
     assert.strictEqual(
@@ -129,6 +308,20 @@ describe('formatDocument — expandLists: false', () => {
       formatDocument(input, { expandLists: false, alwaysExpandRequire: true }),
       input
     );
+  });
+});
+
+describe('formatDocument — indentBlocks: false', () => {
+  it('leaves block indentation untouched', () => {
+    const input = 'if condition {\nfileinto "Inbox";\n}';
+    assert.strictEqual(formatDocument(input, { indentBlocks: false }), input);
+  });
+});
+
+describe('formatDocument — normalizeBlankLines: false', () => {
+  it('leaves multiple blank lines untouched', () => {
+    const input = 'require ["fileinto"];\n\n\nfileinto "Inbox";';
+    assert.strictEqual(formatDocument(input, { normalizeBlankLines: false }), input);
   });
 });
 
@@ -170,19 +363,90 @@ describe('formatDocument', () => {
     assert.strictEqual(formatDocument(input, { alwaysExpandRequire: true }), input);
   });
 
+  it('indents the body of an if/elsif/else block', () => {
+    const input = [
+      'if address :is "From" "spam@evil.com" {',
+      'fileinto "Spam";',
+      'stop;',
+      '} elsif address :is "From" "boss@company.com" {',
+      'fileinto "Important";',
+      '} else {',
+      'keep;',
+      '}',
+    ].join('\n');
+
+    const expected = [
+      'if address :is "From" "spam@evil.com" {',
+      '  fileinto "Spam";',
+      '  stop;',
+      '} elsif address :is "From" "boss@company.com" {',
+      '  fileinto "Important";',
+      '} else {',
+      '  keep;',
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(formatDocument(input), expected);
+  });
+
+  it('normalizes multi-line list indentation after block re-indent', () => {
+    // After indentBlocks, `fileinto [` is at 2-space indent.
+    // normalizeMultilineListIndentation then fixes items to 4-space.
+    const input = [
+      'if condition {',
+      'fileinto ["INBOX", "Spam"];',
+      '}',
+    ].join('\n');
+
+    const expected = [
+      'if condition {',
+      '  fileinto [',
+      '    "INBOX",',
+      '    "Spam"',
+      '  ];',
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(formatDocument(input), expected);
+  });
+
+  it('is idempotent on a fully formatted document', () => {
+    const formatted = [
+      'require ["fileinto", "imap4flags"];',
+      '',
+      'if address :is "From" [',
+      '  "alice@example.com",',
+      '  "bob@example.com"',
+      '] {',
+      '  fileinto "Team";',
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(formatDocument(formatted), formatted);
+  });
+
+  it('collapses multiple blank lines', () => {
+    const input = 'require ["fileinto"];\n\n\n\nfileinto "Inbox";';
+    const expected = 'require ["fileinto"];\n\nfileinto "Inbox";';
+    assert.strictEqual(formatDocument(input), expected);
+  });
+
   it('handles a realistic Sieve rule (require not expanded by default)', () => {
     const input = [
       'require ["fileinto", "imap4flags",];',
       '',
       'if address :is "From" ["alice@example.com", "bob@example.com",] {',
-      '  fileinto "Team";',
+      'fileinto "Team";',
       '}',
     ].join('\n');
 
     const expected = [
       'require ["fileinto", "imap4flags"];',
       '',
-      'if address :is "From" [\n  "alice@example.com",\n  "bob@example.com"\n] {',
+      'if address :is "From" [',
+      '  "alice@example.com",',
+      '  "bob@example.com"',
+      '] {',
       '  fileinto "Team";',
       '}',
     ].join('\n');
@@ -195,14 +459,20 @@ describe('formatDocument', () => {
       'require ["fileinto", "imap4flags",];',
       '',
       'if address :is "From" ["alice@example.com", "bob@example.com",] {',
-      '  fileinto "Team";',
+      'fileinto "Team";',
       '}',
     ].join('\n');
 
     const expected = [
-      'require [\n  "fileinto",\n  "imap4flags"\n];',
+      'require [',
+      '  "fileinto",',
+      '  "imap4flags"',
+      '];',
       '',
-      'if address :is "From" [\n  "alice@example.com",\n  "bob@example.com"\n] {',
+      'if address :is "From" [',
+      '  "alice@example.com",',
+      '  "bob@example.com"',
+      '] {',
       '  fileinto "Team";',
       '}',
     ].join('\n');

@@ -31,18 +31,35 @@
         "provideDocumentFormattingEdits": true
       }
     ],
+    "grammars": [
+      {
+        "language": "sieve",
+        "scopeName": "source.sieve",
+        "path": "./syntaxes/sieve.tmLanguage.json"
+      }
+    ],
     "configuration": {
       "title": "Sieve Formatter",
       "properties": {
         "sieve.formatter.expandLists": {
           "type": "boolean",
           "default": true,
-          "description": "Expand string lists with 2 or more items to one-item-per-line. Disable to keep all lists on a single line."
+          "description": "Expand string lists with 2 or more items to one-item-per-line, and normalise indentation of already-multi-line lists. Disable to leave all list formatting untouched."
         },
         "sieve.formatter.alwaysExpandRequire": {
           "type": "boolean",
           "default": false,
           "description": "Expand the require list to multi-line when it contains 2 or more extensions, using the same rule as other lists. Has no effect when expandLists is disabled."
+        },
+        "sieve.formatter.indentBlocks": {
+          "type": "boolean",
+          "default": true,
+          "description": "Re-indent the contents of if, elsif, and else blocks based on brace nesting depth."
+        },
+        "sieve.formatter.normalizeBlankLines": {
+          "type": "boolean",
+          "default": true,
+          "description": "Collapse runs of more than one consecutive blank line into a single blank line."
         }
       }
     }

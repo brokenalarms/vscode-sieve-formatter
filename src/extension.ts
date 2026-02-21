@@ -17,9 +17,17 @@ export function activate(context: vscode.ExtensionContext) {
         const config = vscode.workspace.getConfiguration('sieve.formatter');
         const expandLists = config.get<boolean>('expandLists', true);
         const alwaysExpandRequire = config.get<boolean>('alwaysExpandRequire', false);
+        const indentBlocksSetting = config.get<boolean>('indentBlocks', true);
+        const normalizeBlankLinesSetting = config.get<boolean>('normalizeBlankLines', true);
 
         const fullText = document.getText();
-        const formattedText = formatDocument(fullText, { indent, expandLists, alwaysExpandRequire });
+        const formattedText = formatDocument(fullText, {
+          indent,
+          expandLists,
+          alwaysExpandRequire,
+          indentBlocks: indentBlocksSetting,
+          normalizeBlankLines: normalizeBlankLinesSetting,
+        });
 
         if (formattedText === fullText) {
           return [];

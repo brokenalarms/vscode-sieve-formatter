@@ -1,0 +1,105 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Sieve",
+  "scopeName": "source.sieve",
+  "patterns": [
+    { "include": "#block-comment" },
+    { "include": "#line-comment" },
+    { "include": "#string" },
+    { "include": "#control-keywords" },
+    { "include": "#actions" },
+    { "include": "#tests" },
+    { "include": "#tagged-arguments" },
+    { "include": "#number" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "block-comment": {
+      "name": "comment.block.sieve",
+      "begin": "/\\*",
+      "end": "\\*/",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.comment.begin.sieve" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.comment.end.sieve" }
+      }
+    },
+    "line-comment": {
+      "name": "comment.line.number-sign.sieve",
+      "match": "#.*$",
+      "captures": {
+        "0": { "name": "punctuation.definition.comment.sieve" }
+      }
+    },
+    "string": {
+      "name": "string.quoted.double.sieve",
+      "begin": "\"",
+      "end": "\"",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.sieve" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.sieve" }
+      },
+      "patterns": [
+        {
+          "name": "constant.character.escape.sieve",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "control-keywords": {
+      "name": "keyword.control.sieve",
+      "match": "\\b(if|elsif|else|require)\\b"
+    },
+    "actions": {
+      "comment": "Standard RFC 5228 actions plus common extensions (fileinto, reject, vacation, notify, etc.)",
+      "name": "support.function.action.sieve",
+      "match": "\\b(fileinto|reject|ereject|keep|discard|stop|redirect|vacation|notify|setflag|addflag|removeflag|addheader|deleteheader|convert|enclose|extracttext|foreverypart|include|return|set|unset)\\b"
+    },
+    "tests": {
+      "comment": "Built-in tests and test combinators from RFC 5228 and common extensions",
+      "name": "support.function.test.sieve",
+      "match": "\\b(address|header|envelope|size|exists|not|allof|anyof|true|false|body|date|currentdate|hasflag|string|environment|mailboxexists|metadata|metadataexists|servermetadata|servermetadataexists|spamtest|virustest)\\b"
+    },
+    "tagged-arguments": {
+      "comment": "Tagged arguments start with a colon (e.g. :is, :contains, :matches, :localpart)",
+      "name": "storage.modifier.tagged-argument.sieve",
+      "match": ":[A-Za-z_][A-Za-z0-9_]*"
+    },
+    "number": {
+      "comment": "Integer literals with optional quantifier K/M/G (RFC 5228 §2.4.2)",
+      "name": "constant.numeric.sieve",
+      "match": "\\b[0-9]+[KMGkmg]?\\b"
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.definition.block.begin.sieve",
+          "match": "\\{"
+        },
+        {
+          "name": "punctuation.definition.block.end.sieve",
+          "match": "\\}"
+        },
+        {
+          "name": "punctuation.definition.list.begin.sieve",
+          "match": "\\["
+        },
+        {
+          "name": "punctuation.definition.list.end.sieve",
+          "match": "\\]"
+        },
+        {
+          "name": "punctuation.terminator.statement.sieve",
+          "match": ";"
+        },
+        {
+          "name": "punctuation.separator.comma.sieve",
+          "match": ","
+        }
+      ]
+    }
+  }
+}
