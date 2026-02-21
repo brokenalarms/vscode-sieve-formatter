@@ -45,6 +45,9 @@ export function removeTrailingCommas(text: string): string {
  * Expand single-line lists/argument groups with 2 or more items to multi-line.
  * Only operates on content that is already on a single line (no embedded newlines).
  *
+ * By default, `require [...]` lines are skipped — pass `skipRequire = false` to
+ * include them (used when `alwaysExpandRequire` is enabled).
+ *
  * e.g. ["item1", "item2", "item3"]
  *   →  [
  *        "item1",
@@ -52,9 +55,19 @@ export function removeTrailingCommas(text: string): string {
  *        "item3"
  *      ]
  */
-export function expandListsToMultiline(text: string, indent: string = '  '): string {
-  // Match [...] that doesn't contain newlines or nested brackets
-  return text.replace(/\[([^[\]\n]+)\]/g, (match, content: string) => {
+export function expandListsToMultiline(
+  text: string,
+  indent: string = '  ',
+  skipRequire = true
+): string {
+  return text.replace(/\[([^[\]\n]+)\]/g, (match, content: string, offset: number) => {
+    if (skipRequire) {
+      const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
+      const lineBefore = text.slice(lineStart, offset);
+      if (/^require\s+$/.test(lineBefore)) {
+        return match;
+      }
+    }
     const items = splitOnCommas(content);
     if (items.length >= 2) {
       return `[\n${indent}${items.join(`,\n${indent}`)}\n]`;
@@ -63,39 +76,13 @@ export function expandListsToMultiline(text: string, indent: string = '  '): str
   });
 }
 
-/**
- * Expand the `require` statement to multi-line, even when it lists only one
- * extension. Useful because `require` is frequently edited as rules evolve,
- * so keeping it multi-line from the start avoids noisy diffs.
- *
- * Handles both bare-string and single-item list forms:
- *   require "fileinto";      →  require [\n  "fileinto"\n];
- *   require ["fileinto"];    →  require [\n  "fileinto"\n];
- *
- * Multi-item require lists are already handled by expandListsToMultiline.
- * Already-expanded require blocks are left untouched (no embedded newlines matched).
- */
-export function expandRequireToMultiline(text: string, indent: string = '  '): string {
-  // require "ext";  →  require [\n  "ext"\n];
-  text = text.replace(
-    /^require\s+"([^"]+)"\s*;/mg,
-    (_match, ext: string) => `require [\n${indent}"${ext}"\n];`
-  );
-  // require ["ext"];  →  require [\n  "ext"\n];
-  // (single-item lists are skipped by expandListsToMultiline)
-  text = text.replace(
-    /^require\s+\["([^"]+)"\]\s*;/mg,
-    (_match, ext: string) => `require [\n${indent}"${ext}"\n];`
-  );
-  return text;
-}
-
 export interface FormatOptions {
   /** Indentation string used inside expanded lists. Default: two spaces. */
   indent?: string;
   /**
-   * When true, the `require` statement is always expanded to multi-line even
-   * with only one extension listed. Default: false.
+   * When true, the `require` list is expanded to multi-line when it contains
+   * 2 or more extensions — the same rule applied to all other lists.
+   * By default, `require` is left on a single line regardless of extension count.
    *
    * Controlled by the `sieve.formatter.alwaysExpandRequire` VS Code setting.
    */
@@ -108,9 +95,6 @@ export interface FormatOptions {
 export function formatDocument(text: string, options: FormatOptions = {}): string {
   const { indent = '  ', alwaysExpandRequire = false } = options;
   let result = removeTrailingCommas(text);
-  result = expandListsToMultiline(result, indent);
-  if (alwaysExpandRequire) {
-    result = expandRequireToMultiline(result, indent);
-  }
+  result = expandListsToMultiline(result, indent, /* skipRequire= */ !alwaysExpandRequire);
   return result;
 }

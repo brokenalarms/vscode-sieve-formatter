@@ -2,7 +2,6 @@ import * as assert from 'assert';
 import {
   removeTrailingCommas,
   expandListsToMultiline,
-  expandRequireToMultiline,
   formatDocument,
 } from '../formatter';
 
@@ -85,38 +84,28 @@ describe('expandListsToMultiline', () => {
     const input = '["hello, world", "foo"]';
     assert.strictEqual(expandListsToMultiline(input), '[\n  "hello, world",\n  "foo"\n]');
   });
-});
 
-describe('expandRequireToMultiline', () => {
-  it('expands bare-string require to multi-line', () => {
+  it('skips require lists by default (single-item)', () => {
+    const input = 'require ["fileinto"];';
+    assert.strictEqual(expandListsToMultiline(input), input);
+  });
+
+  it('skips require lists by default (multi-item)', () => {
+    const input = 'require ["fileinto", "imap4flags"];';
+    assert.strictEqual(expandListsToMultiline(input), input);
+  });
+
+  it('expands require lists when skipRequire is false (single-item stays collapsed)', () => {
     assert.strictEqual(
-      expandRequireToMultiline('require "fileinto";'),
-      'require [\n  "fileinto"\n];'
+      expandListsToMultiline('require ["fileinto"];', '  ', false),
+      'require ["fileinto"];'
     );
   });
 
-  it('expands single-item list require to multi-line', () => {
+  it('expands require lists when skipRequire is false (multi-item expands)', () => {
     assert.strictEqual(
-      expandRequireToMultiline('require ["fileinto"];'),
-      'require [\n  "fileinto"\n];'
-    );
-  });
-
-  it('is idempotent on already-expanded require', () => {
-    const input = 'require [\n  "fileinto"\n];';
-    assert.strictEqual(expandRequireToMultiline(input), input);
-  });
-
-  it('does not touch multi-item require (already handled by expandListsToMultiline)', () => {
-    // After expandListsToMultiline runs, multi-item require is already multi-line
-    const input = 'require [\n  "fileinto",\n  "imap4flags"\n];';
-    assert.strictEqual(expandRequireToMultiline(input), input);
-  });
-
-  it('respects the provided indent string', () => {
-    assert.strictEqual(
-      expandRequireToMultiline('require "fileinto";', '\t'),
-      'require [\n\t"fileinto"\n];'
+      expandListsToMultiline('require ["fileinto", "imap4flags"];', '  ', false),
+      'require [\n  "fileinto",\n  "imap4flags"\n];'
     );
   });
 });
@@ -133,29 +122,53 @@ describe('formatDocument', () => {
     assert.strictEqual(formatDocument(input), input);
   });
 
-  it('does not expand single-item require by default (bare string)', () => {
+  it('does not expand require by default (single-item, bare string)', () => {
     const input = 'require "fileinto";\nfileinto "Inbox";';
     assert.strictEqual(formatDocument(input), input);
   });
 
-  it('does not expand single-item require by default (list form)', () => {
+  it('does not expand require by default (single-item, list form)', () => {
     const input = 'require ["fileinto"];\nfileinto "Inbox";';
     assert.strictEqual(formatDocument(input), input);
   });
 
-  it('expands single-item require when alwaysExpandRequire is true', () => {
-    const input = 'require "fileinto";\nfileinto "Inbox";';
-    const expected = 'require [\n  "fileinto"\n];\nfileinto "Inbox";';
+  it('does not expand require by default (multi-item)', () => {
+    const input = 'require ["fileinto", "imap4flags"];\nfileinto "Inbox";';
+    assert.strictEqual(formatDocument(input), input);
+  });
+
+  it('expands multi-item require when alwaysExpandRequire is true', () => {
+    const input = 'require ["fileinto", "imap4flags"];\nfileinto "Inbox";';
+    const expected = 'require [\n  "fileinto",\n  "imap4flags"\n];\nfileinto "Inbox";';
     assert.strictEqual(formatDocument(input, { alwaysExpandRequire: true }), expected);
   });
 
-  it('expands single-item list require when alwaysExpandRequire is true', () => {
+  it('does not expand single-item require even when alwaysExpandRequire is true', () => {
     const input = 'require ["fileinto"];\nfileinto "Inbox";';
-    const expected = 'require [\n  "fileinto"\n];\nfileinto "Inbox";';
-    assert.strictEqual(formatDocument(input, { alwaysExpandRequire: true }), expected);
+    assert.strictEqual(formatDocument(input, { alwaysExpandRequire: true }), input);
   });
 
-  it('handles a realistic Sieve rule', () => {
+  it('handles a realistic Sieve rule (require not expanded by default)', () => {
+    const input = [
+      'require ["fileinto", "imap4flags",];',
+      '',
+      'if address :is "From" ["alice@example.com", "bob@example.com",] {',
+      '  fileinto "Team";',
+      '}',
+    ].join('\n');
+
+    const expected = [
+      'require ["fileinto", "imap4flags"];',
+      '',
+      'if address :is "From" [\n  "alice@example.com",\n  "bob@example.com"\n] {',
+      '  fileinto "Team";',
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(formatDocument(input), expected);
+  });
+
+  it('handles a realistic Sieve rule with alwaysExpandRequire', () => {
     const input = [
       'require ["fileinto", "imap4flags",];',
       '',
@@ -172,6 +185,6 @@ describe('formatDocument', () => {
       '}',
     ].join('\n');
 
-    assert.strictEqual(formatDocument(input), expected);
+    assert.strictEqual(formatDocument(input, { alwaysExpandRequire: true }), expected);
   });
 });

@@ -18,9 +18,9 @@ Three passes run in order:
 
 1. **`removeTrailingCommas`** — strips `,` immediately before `]` or `)`. General regex, not limited to quoted strings.
 
-2. **`expandListsToMultiline`** — any `[...]` on a single line with 2+ comma-separated items is expanded to one-item-per-line. Single-item lists are left alone. Already-multi-line content (contains `\n`) is not re-processed.
+2. **`expandListsToMultiline`** — any `[...]` on a single line with 2+ comma-separated items is expanded to one-item-per-line. Single-item lists are left alone. Already-multi-line content (contains `\n`) is not re-processed. `require [...]` is skipped by default (see pass 3).
 
-3. **`expandRequireToMultiline`** — only runs when `sieve.formatter.alwaysExpandRequire` is enabled (default off). Ensures `require` is always multi-line even with one extension, because `require` is edited frequently as rules evolve and consistent multi-line form avoids noisy diffs when the second extension is added.
+3. **`require` opt-in** — `alwaysExpandRequire` (default off) opts `require` into the same expansion rule as every other list: 2+ items expand, single item stays collapsed. When the setting is off, `require` is left on one line regardless of how many extensions it lists. Passing `skipRequire = false` to `expandListsToMultiline` is the mechanism.
 
 `formatDocument` accepts a `FormatOptions` object (`indent`, `alwaysExpandRequire`) and runs all passes. `extension.ts` builds this object from VS Code's `FormattingOptions` and `workspace.getConfiguration`.
 
