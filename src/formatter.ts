@@ -64,12 +64,53 @@ export function expandListsToMultiline(text: string, indent: string = '  '): str
 }
 
 /**
- * Apply all formatting passes to a Sieve document.
- * @param text   - raw document content
- * @param indent - indentation string to use inside expanded lists
+ * Expand the `require` statement to multi-line, even when it lists only one
+ * extension. Useful because `require` is frequently edited as rules evolve,
+ * so keeping it multi-line from the start avoids noisy diffs.
+ *
+ * Handles both bare-string and single-item list forms:
+ *   require "fileinto";      →  require [\n  "fileinto"\n];
+ *   require ["fileinto"];    →  require [\n  "fileinto"\n];
+ *
+ * Multi-item require lists are already handled by expandListsToMultiline.
+ * Already-expanded require blocks are left untouched (no embedded newlines matched).
  */
-export function formatDocument(text: string, indent: string = '  '): string {
+export function expandRequireToMultiline(text: string, indent: string = '  '): string {
+  // require "ext";  →  require [\n  "ext"\n];
+  text = text.replace(
+    /^require\s+"([^"]+)"\s*;/mg,
+    (_match, ext: string) => `require [\n${indent}"${ext}"\n];`
+  );
+  // require ["ext"];  →  require [\n  "ext"\n];
+  // (single-item lists are skipped by expandListsToMultiline)
+  text = text.replace(
+    /^require\s+\["([^"]+)"\]\s*;/mg,
+    (_match, ext: string) => `require [\n${indent}"${ext}"\n];`
+  );
+  return text;
+}
+
+export interface FormatOptions {
+  /** Indentation string used inside expanded lists. Default: two spaces. */
+  indent?: string;
+  /**
+   * When true, the `require` statement is always expanded to multi-line even
+   * with only one extension listed. Default: false.
+   *
+   * Controlled by the `sieve.formatter.alwaysExpandRequire` VS Code setting.
+   */
+  alwaysExpandRequire?: boolean;
+}
+
+/**
+ * Apply all formatting passes to a Sieve document.
+ */
+export function formatDocument(text: string, options: FormatOptions = {}): string {
+  const { indent = '  ', alwaysExpandRequire = false } = options;
   let result = removeTrailingCommas(text);
   result = expandListsToMultiline(result, indent);
+  if (alwaysExpandRequire) {
+    result = expandRequireToMultiline(result, indent);
+  }
   return result;
 }

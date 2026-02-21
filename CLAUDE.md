@@ -1,120 +1,61 @@
 # CLAUDE.md — vscode-sieve-formatter
 
-This file documents conventions, commands, and architectural decisions for working on this VS Code extension with Claude Code.
+## Architecture
 
-## Project Overview
-
-A VS Code formatter extension for Sieve email filter scripts (RFC 5228). Used primarily for Proton Mail rules. Formatter features:
-
-1. **Remove trailing commas** from string lists `["a", "b",]` → `["a", "b"]`
-2. **Expand multi-item lists** to multi-line for clean git diffs (2+ items)
-
-## Key Architecture
+All formatting logic lives in `src/formatter.ts` with **no VS Code imports**. `src/extension.ts` is purely glue — it reads VS Code document state and settings, calls the formatter, and returns edits. This separation means the business logic is testable with plain mocha and no VS Code host.
 
 ```
 src/
-  formatter.ts     ← pure functions (no VS Code API) — test this directly
-  extension.ts     ← VS Code glue code, imports formatter.ts
+  formatter.ts      ← pure functions, no VS Code API
+  extension.ts      ← VS Code glue only
   test/
-    formatter.test.ts  ← mocha unit tests for formatter.ts
-language-configuration.json  ← bracket/comment config for the sieve language
+    formatter.test.ts
 ```
 
-**Critical principle**: all formatting logic lives in `formatter.ts` with no VS Code imports. This keeps business logic easily testable without a VS Code instance.
+## How the formatter works
 
-## Development Commands
+Three passes run in order:
 
-```bash
-npm run compile      # one-off TypeScript compile
-npm run watch        # watch mode for development
-npm run lint         # ESLint check
-npm test             # run unit tests (mocha, no VS Code required)
-npm run test:ci      # lint + compile + test (what CI runs)
-```
+1. **`removeTrailingCommas`** — strips `,` immediately before `]` or `)`. General regex, not limited to quoted strings.
 
-To launch the extension in a VS Code Extension Development Host: press **F5** (uses `.vscode/launch.json`).
+2. **`expandListsToMultiline`** — any `[...]` on a single line with 2+ comma-separated items is expanded to one-item-per-line. Single-item lists are left alone. Already-multi-line content (contains `\n`) is not re-processed.
 
-## Testing
+3. **`expandRequireToMultiline`** — only runs when `sieve.formatter.alwaysExpandRequire` is enabled (default off). Ensures `require` is always multi-line even with one extension, because `require` is edited frequently as rules evolve and consistent multi-line form avoids noisy diffs when the second extension is added.
 
-Tests are plain mocha unit tests against `src/formatter.ts`. They require no VS Code instance and run directly in Node via `ts-node`.
+`formatDocument` accepts a `FormatOptions` object (`indent`, `alwaysExpandRequire`) and runs all passes. `extension.ts` builds this object from VS Code's `FormattingOptions` and `workspace.getConfiguration`.
 
-```bash
-npm test
-```
+## Testing philosophy
 
-**Test philosophy:**
-- Test each formatting function in isolation (`removeTrailingCommas`, `expandListsToMultiline`)
-- Test `formatDocument` with realistic Sieve snippets end-to-end
-- Edge cases to always cover: strings containing commas, already-formatted input (idempotency), empty input, single-item lists (must not expand)
+Tests cover each formatter function in isolation, then `formatDocument` end-to-end. Every new behaviour needs:
+- A positive case (it transforms correctly)
+- An idempotency case (running again produces the same output)
+- Edge cases relevant to that function (commas inside strings, already-formatted input, single vs multi item)
 
-**Adding tests:** add cases to `src/test/formatter.test.ts`. No test runner config needed — mocha picks up all `*.test.ts` files under `src/test/`.
+Avoid VS Code integration tests (`@vscode/test-electron`) unless testing something that genuinely requires a running editor — the formatter has no such dependency.
 
-### What NOT to write integration tests for (yet)
+## VS Code settings
 
-VS Code integration tests (using `@vscode/test-electron`) spin up a full VS Code host and are significantly harder to set up in CI. They're not needed while all formatting logic is pure. Add them only if you need to test VS Code-specific behaviour (e.g. `FormattingOptions` being passed correctly, `onSave` triggers).
+Settings are declared in `package.json` under `contributes.configuration` and read in `extension.ts` via `vscode.workspace.getConfiguration('sieve.formatter')`. Add new settings there; do not hard-code behaviour that users might want to control.
 
-## Linting
+Current settings:
+- `sieve.formatter.alwaysExpandRequire` (bool, default `false`)
 
-ESLint with `@typescript-eslint`. Config in `.eslintrc.json`. Runs on `src/**/*.ts`. The CI pipeline blocks on lint errors.
+## Packaging
 
-```bash
-npm run lint
-```
+`.vscodeignore` controls what ships in the `.vsix`. Source, tests, and config files are excluded — only compiled output and `language-configuration.json` are included. The `.vsix` itself is git-ignored.
 
-Common issues:
-- Unused variables: prefix with `_` or remove
-- `@typescript-eslint/naming-convention`: imports must be camelCase or PascalCase
+## GitHub workflow
 
-## Packaging & Publishing
+- One PR per feature; CI must be green before merging
+- Commit messages: imperative, present tense (`add require expansion setting`)
+- Never commit `out/`, `node_modules/`, or `.vsix`
 
-```bash
-npm install -g @vscode/vsce   # install the VS Code extension CLI (once)
-vsce package                   # produces a .vsix file
-vsce publish                   # publish to Marketplace (requires PAT)
-```
+## Sieve language notes
 
-`.vscodeignore` controls what lands in the `.vsix`. Source files, tests, and config are excluded — only `out/` and `language-configuration.json` are shipped.
-
-The `.vsix` file is excluded from git (`.gitignore`).
-
-## GitHub Workflow
-
-- **Main branch**: `main` (or `master`)
-- **Feature branches**: branch off `main`, open a PR, merge via squash
-- **CI**: GitHub Actions runs lint + compile + tests on every push and PR (see `.github/workflows/ci.yml`)
-- **Commit messages**: imperative mood, present tense — `fix trailing comma regex`, `add multi-line list expansion`
-- Never commit `out/`, `node_modules/`, or `.vsix` files
-
-### PR checklist
-
-- [ ] `npm run test:ci` passes locally before pushing
-- [ ] New behaviour covered by tests in `src/test/formatter.test.ts`
-- [ ] `.vscodeignore` updated if new files are added that should not ship
-
-## Sieve Language Notes
-
-Relevant RFC 5228 constructs this formatter handles:
-
-```sieve
-require ["fileinto", "imap4flags"];        # string list → expand to multi-line
-
-if address :is "From" "alice@example.com" {
-  fileinto "INBOX";
-}
-
-if address :is "From" ["alice@example.com", "bob@example.com"] {
-  fileinto "Team";
-}
-```
-
-- String lists use `[...]`, not `(...)`
-- Tagged arguments (`:is`, `:contains`, `:matches`) are not affected by the formatter
-- Single-string arguments are left as-is; only 2+ item lists are expanded
+Standard Sieve (RFC 5228) uses `[...]` for string lists — there are no `()`-style function calls. Tagged arguments (`:is`, `:contains`, `:matches`) are not affected by any formatter pass. The `require` command is always the first statement and lists extension dependencies.
 
 ## Roadmap
 
-See `README.md` for planned features. Next priorities:
-
-1. Handle edge case: list items that are already on their own lines but have inconsistent indentation (normalise indent)
-2. Consider a `sieve.formatter.expandLists` setting to let users opt out of multi-line expansion
-3. Syntax highlighting (separate contribution point — `grammars`)
+- Normalise already-multi-line lists with inconsistent indentation
+- `sieve.formatter.expandLists` setting to opt out of multi-line expansion entirely
+- Syntax highlighting (`.tmLanguage.json` grammar)

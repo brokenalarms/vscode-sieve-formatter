@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import {
   removeTrailingCommas,
   expandListsToMultiline,
+  expandRequireToMultiline,
   formatDocument,
 } from '../formatter';
 
@@ -81,11 +82,42 @@ describe('expandListsToMultiline', () => {
   });
 
   it('does not expand items that contain commas inside strings', () => {
-    // A string value containing a comma must not be split on that comma
     const input = '["hello, world", "foo"]';
-    const expanded = expandListsToMultiline(input);
-    // Should still produce 2 items, not 3
-    assert.strictEqual(expanded, '[\n  "hello, world",\n  "foo"\n]');
+    assert.strictEqual(expandListsToMultiline(input), '[\n  "hello, world",\n  "foo"\n]');
+  });
+});
+
+describe('expandRequireToMultiline', () => {
+  it('expands bare-string require to multi-line', () => {
+    assert.strictEqual(
+      expandRequireToMultiline('require "fileinto";'),
+      'require [\n  "fileinto"\n];'
+    );
+  });
+
+  it('expands single-item list require to multi-line', () => {
+    assert.strictEqual(
+      expandRequireToMultiline('require ["fileinto"];'),
+      'require [\n  "fileinto"\n];'
+    );
+  });
+
+  it('is idempotent on already-expanded require', () => {
+    const input = 'require [\n  "fileinto"\n];';
+    assert.strictEqual(expandRequireToMultiline(input), input);
+  });
+
+  it('does not touch multi-item require (already handled by expandListsToMultiline)', () => {
+    // After expandListsToMultiline runs, multi-item require is already multi-line
+    const input = 'require [\n  "fileinto",\n  "imap4flags"\n];';
+    assert.strictEqual(expandRequireToMultiline(input), input);
+  });
+
+  it('respects the provided indent string', () => {
+    assert.strictEqual(
+      expandRequireToMultiline('require "fileinto";', '\t'),
+      'require [\n\t"fileinto"\n];'
+    );
   });
 });
 
@@ -99,6 +131,23 @@ describe('formatDocument', () => {
   it('returns the original text unchanged when already formatted', () => {
     const input = 'fileinto "Inbox";';
     assert.strictEqual(formatDocument(input), input);
+  });
+
+  it('does not expand single-item require by default', () => {
+    const input = 'require "fileinto";\nfileinto "Inbox";';
+    assert.strictEqual(formatDocument(input), input);
+  });
+
+  it('expands single-item require when alwaysExpandRequire is true', () => {
+    const input = 'require "fileinto";\nfileinto "Inbox";';
+    const expected = 'require [\n  "fileinto"\n];\nfileinto "Inbox";';
+    assert.strictEqual(formatDocument(input, { alwaysExpandRequire: true }), expected);
+  });
+
+  it('expands single-item list require when alwaysExpandRequire is true', () => {
+    const input = 'require ["fileinto"];\nfileinto "Inbox";';
+    const expected = 'require [\n  "fileinto"\n];\nfileinto "Inbox";';
+    assert.strictEqual(formatDocument(input, { alwaysExpandRequire: true }), expected);
   });
 
   it('handles a realistic Sieve rule', () => {

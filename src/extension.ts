@@ -14,8 +14,11 @@ export function activate(context: vscode.ExtensionContext) {
           ? ' '.repeat(options.tabSize)
           : '\t';
 
+        const config = vscode.workspace.getConfiguration('sieve.formatter');
+        const alwaysExpandRequire = config.get<boolean>('alwaysExpandRequire', false);
+
         const fullText = document.getText();
-        const formattedText = formatDocument(fullText, indent);
+        const formattedText = formatDocument(fullText, { indent, alwaysExpandRequire });
 
         if (formattedText === fullText) {
           return [];

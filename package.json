@@ -30,7 +30,17 @@
         "language": "sieve",
         "provideDocumentFormattingEdits": true
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Sieve Formatter",
+      "properties": {
+        "sieve.formatter.alwaysExpandRequire": {
+          "type": "boolean",
+          "default": false,
+          "description": "Always expand the require statement to multi-line, even when it lists only one extension. Useful for keeping require consistently multi-line as rules grow."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
