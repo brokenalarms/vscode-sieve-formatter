@@ -52,9 +52,38 @@ function countCharsOutsideStrings(text: string, ch: string): number {
  * Remove trailing commas before a closing bracket or parenthesis.
  * e.g. ["a", "b",]  →  ["a", "b"]
  *      fileinto("x",)  →  fileinto("x")
+ *
+ * Commas inside double-quoted strings are never removed.
  */
 export function removeTrailingCommas(text: string): string {
-  return text.replace(/,(\s*[)\]])/g, '$1');
+  let result = '';
+  let inString = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+
+    if (ch === '"') {
+      inString = !inString;
+      result += ch;
+    } else if (ch === ',' && !inString) {
+      // Peek ahead past optional whitespace to see whether ) or ] follows.
+      let j = i + 1;
+      while (j < text.length && (text[j] === ' ' || text[j] === '\t' || text[j] === '\n' || text[j] === '\r')) {
+        j++;
+      }
+      if (j < text.length && (text[j] === ')' || text[j] === ']')) {
+        // Trailing comma — drop it and keep only the whitespace between , and )/]
+        result += text.slice(i + 1, j);
+        i = j - 1; // the for-loop will increment to j
+      } else {
+        result += ch;
+      }
+    } else {
+      result += ch;
+    }
+  }
+
+  return result;
 }
 
 /**

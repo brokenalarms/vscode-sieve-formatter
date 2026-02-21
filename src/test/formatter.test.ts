@@ -52,6 +52,12 @@ describe('removeTrailingCommas', () => {
     const input = '["a", "b", "c"]';
     assert.strictEqual(removeTrailingCommas(input), input);
   });
+
+  it('does not remove a comma that is inside a string value', () => {
+    // The ,] sequence is inside the quoted string — must not be touched.
+    const input = 'if header :matches "Subject" ["pattern,]"] {';
+    assert.strictEqual(removeTrailingCommas(input), input);
+  });
 });
 
 describe('expandListsToMultiline', () => {
