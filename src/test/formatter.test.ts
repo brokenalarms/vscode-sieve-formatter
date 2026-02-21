@@ -133,8 +133,13 @@ describe('formatDocument', () => {
     assert.strictEqual(formatDocument(input), input);
   });
 
-  it('does not expand single-item require by default', () => {
+  it('does not expand single-item require by default (bare string)', () => {
     const input = 'require "fileinto";\nfileinto "Inbox";';
+    assert.strictEqual(formatDocument(input), input);
+  });
+
+  it('does not expand single-item require by default (list form)', () => {
+    const input = 'require ["fileinto"];\nfileinto "Inbox";';
     assert.strictEqual(formatDocument(input), input);
   });
 
