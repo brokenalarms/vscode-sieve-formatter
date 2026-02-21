@@ -1,28 +1,27 @@
 import * as vscode from 'vscode';
+import { formatDocument } from './formatter';
 
-
-function removeTrailingCommas(text: string): string {
-  // Match a comma followed by any whitespace or newlines, then a closing bracket
-  const listRegex = /",([\s\r\n]*(\)|\]))/g;
-  return text.replace(listRegex, '"$1');
-}
-
-// Deactivate the extension
 export function deactivate() { }
 
 export function activate(context: vscode.ExtensionContext) {
-
-  // Register a formatting provider for Sieve files
   context.subscriptions.push(
     vscode.languages.registerDocumentFormattingEditProvider('sieve', {
-      provideDocumentFormattingEdits(document: vscode.TextDocument): vscode.TextEdit[] {
-        const edits: vscode.TextEdit[] = [];
+      provideDocumentFormattingEdits(
+        document: vscode.TextDocument,
+        options: vscode.FormattingOptions
+      ): vscode.TextEdit[] {
+        const indent = options.insertSpaces
+          ? ' '.repeat(options.tabSize)
+          : '\t';
 
-        // Example: Format the entire document by replacing content
         const fullText = document.getText();
-        const formattedText = removeTrailingCommas(fullText);
+        const formattedText = formatDocument(fullText, indent);
 
-        edits.push(
+        if (formattedText === fullText) {
+          return [];
+        }
+
+        return [
           vscode.TextEdit.replace(
             new vscode.Range(
               document.positionAt(0),
@@ -30,9 +29,7 @@ export function activate(context: vscode.ExtensionContext) {
             ),
             formattedText
           )
-        );
-
-        return edits;
+        ];
       }
     })
   );

@@ -1,13 +1,15 @@
 {
   "name": "vscode-sieve-formatter",
   "displayName": "Sieve Auto Formatter",
-  "description": "Removes trailing commas from Sieve lists and function calls",
+  "description": "Formats Sieve email filter scripts: removes trailing commas and expands multi-item lists to multi-line for cleaner git diffs",
   "repository": {
     "type": "git",
     "url": "git@github.com:brokenalarms/vscode-sieve-formatter.git"
   },
-  "version": "0.0.1",
+  "version": "0.1.0",
   "publisher": "brokenalarms",
+  "categories": ["Formatters"],
+  "keywords": ["sieve", "email", "filter", "protonmail", "formatter"],
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -19,9 +21,7 @@
     "languages": [
       {
         "id": "sieve",
-        "extensions": [
-          ".sieve"
-        ],
+        "extensions": [".sieve"],
         "configuration": "./language-configuration.json"
       }
     ],
@@ -29,16 +29,26 @@
       {
         "language": "sieve",
         "provideDocumentFormattingEdits": true
-      }]
+      }
+    ]
   },
   "scripts": {
-    "build": "tsc",
-    "watch": "tsc --watch",
-    "compile": "tsc -p ./"
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc --watch -p ./",
+    "lint": "eslint src --ext ts",
+    "test": "mocha --require ts-node/register 'src/test/**/*.test.ts'",
+    "test:ci": "npm run lint && npm run compile && npm test"
   },
   "devDependencies": {
-    "typescript": "^5.6.3",
-    "vscode": "^1.1.37",
-    "vscode-test": "^1.6.1"
+    "@types/mocha": "^10.0.0",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.57.0",
+    "mocha": "^10.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.6.3"
   }
 }
