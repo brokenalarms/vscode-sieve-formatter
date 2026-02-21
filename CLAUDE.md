@@ -14,21 +14,23 @@ src/
 
 ## How the formatter works
 
-Five passes run in order:
+Six passes run in order:
 
-1. **`removeTrailingCommas`** — strips `,` immediately before `]` or `)`. General regex, not limited to quoted strings. Always runs.
+1. **`removeTrailingCommas`** — strips `,` immediately before `]` or `)`. String-aware. Always runs.
 
 2. **`expandListsToMultiline`** — any `[...]` on a single line with 2+ comma-separated items is expanded to one-item-per-line. Single-item lists are left alone. Already-multi-line content (contains `\n`) is not re-processed. `require [...]` is skipped by default (see `alwaysExpandRequire`). Controlled by `expandLists` (default `true`).
 
-3. **`indentBlocks`** — re-indents all lines based on `{` / `}` nesting depth so the bodies of `if`, `elsif`, and `else` blocks are consistently indented. Lines inside multi-line `[...]` lists are preserved verbatim (handled by pass 4). A `# comment` after `{` on the same line is stripped before the brace check. Controlled by `indentBlocks` (default `true`).
+3. **`joinElsifElse`** — when `elsif` or `else` appears on a line by itself immediately after a lone `}` line, they are joined onto one line as `} elsif` / `} else`. Blank lines between them are consumed. Runs before `indentBlocks` so the merged structure is indented correctly. Controlled by `joinElsifElse` (default `true`).
 
-4. **`normalizeMultilineListIndentation`** — for any `[...]` that spans multiple lines, re-indents each item to `baseIndent + indent` (where `baseIndent` is the leading whitespace of the line containing `[`) and places the closing `]` at `baseIndent`. Runs after `indentBlocks` so item indentation is computed relative to the final line position. Controlled by `expandLists` (default `true`).
+4. **`indentBlocks`** — re-indents all lines based on `{` / `}` nesting depth so the bodies of `if`, `elsif`, and `else` blocks are consistently indented. Lines inside multi-line `[...]` lists are preserved verbatim (handled by pass 5). Lines inside multi-line `/* ... */` block comments are also preserved verbatim. Inline `/* ... */` and `# ...` on the same line as `{`/`}` are stripped before the brace check. Controlled by `indentBlocks` (default `true`).
 
-5. **`normalizeBlankLines`** — collapses runs of more than one consecutive blank line into a single blank line. Controlled by `normalizeBlankLines` (default `true`).
+5. **`normalizeMultilineListIndentation`** — for any `[...]` that spans multiple lines, re-indents each item to `baseIndent + indent` (where `baseIndent` is the leading whitespace of the line containing `[`) and places the closing `]` at `baseIndent`. Runs after `indentBlocks` so item indentation is computed relative to the final line position. Controlled by `expandLists` (default `true`).
+
+6. **`normalizeBlankLines`** — collapses runs of more than one consecutive blank line into a single blank line. Controlled by `normalizeBlankLines` (default `true`).
 
 **`require` opt-in** — `alwaysExpandRequire` (default off) opts `require` into the same expansion rule as every other list: 2+ items expand, single item stays collapsed. When the setting is off, `require` is left on one line regardless of how many extensions it lists. Passing `skipRequire = false` to `expandListsToMultiline` is the mechanism.
 
-`formatDocument` accepts a `FormatOptions` object (`indent`, `expandLists`, `alwaysExpandRequire`, `indentBlocks`, `normalizeBlankLines`) and runs all passes. `extension.ts` builds this object from VS Code's `FormattingOptions` and `workspace.getConfiguration`.
+`formatDocument` accepts a `FormatOptions` object (`indent`, `expandLists`, `alwaysExpandRequire`, `joinElsifElse`, `indentBlocks`, `normalizeBlankLines`) and runs all passes. `extension.ts` builds this object from VS Code's `FormattingOptions` and `workspace.getConfiguration`.
 
 ## Testing philosophy
 
@@ -47,6 +49,7 @@ Current settings:
 - `sieve.formatter.expandLists` (bool, default `true`)
 - `sieve.formatter.alwaysExpandRequire` (bool, default `false`)
 - `sieve.formatter.indentBlocks` (bool, default `true`)
+- `sieve.formatter.joinElsifElse` (bool, default `true`)
 - `sieve.formatter.normalizeBlankLines` (bool, default `true`)
 
 ## Packaging
@@ -65,5 +68,5 @@ Standard Sieve (RFC 5228) uses `[...]` for string lists — there are no `()`-st
 
 ## Roadmap
 
-- Support multi-line block comments (`/* ... */`) in `indentBlocks` — currently interior lines of multi-line block comments are re-indented as if they were code
-- Normalise the placement of `elsif` / `else` onto the same line as the preceding `}` (structural reformatting, not just indentation)
+- Handle `text:` heredoc string literals (multi-line strings) in all passes — currently they are processed as if they were code
+- Sort `require` extensions alphabetically (opt-in setting)

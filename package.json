@@ -6,10 +6,18 @@
     "type": "git",
     "url": "git@github.com:brokenalarms/vscode-sieve-formatter.git"
   },
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "brokenalarms",
-  "categories": ["Formatters"],
-  "keywords": ["sieve", "email", "filter", "protonmail", "formatter"],
+  "categories": [
+    "Formatters"
+  ],
+  "keywords": [
+    "sieve",
+    "email",
+    "filter",
+    "protonmail",
+    "formatter"
+  ],
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -21,7 +29,9 @@
     "languages": [
       {
         "id": "sieve",
-        "extensions": [".sieve"],
+        "extensions": [
+          ".sieve"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
@@ -55,6 +65,11 @@
           "type": "boolean",
           "default": true,
           "description": "Re-indent the contents of if, elsif, and else blocks based on brace nesting depth."
+        },
+        "sieve.formatter.joinElsifElse": {
+          "type": "boolean",
+          "default": true,
+          "description": "When elsif or else appears on its own line after a }, join it onto the same line as the } so that control flow reads as a single construct."
         },
         "sieve.formatter.normalizeBlankLines": {
           "type": "boolean",

@@ -5,6 +5,7 @@ import {
   normalizeMultilineListIndentation,
   indentBlocks,
   normalizeBlankLines,
+  joinElsifElse,
   formatDocument,
 } from '../formatter';
 
@@ -478,5 +479,153 @@ describe('formatDocument', () => {
     ].join('\n');
 
     assert.strictEqual(formatDocument(input, { alwaysExpandRequire: true }), expected);
+  });
+
+  it('joins lone } + elsif when on separate lines', () => {
+    const input = [
+      'if condition {',
+      'fileinto "A";',
+      '}',
+      'elsif condition2 {',
+      'fileinto "B";',
+      '}',
+    ].join('\n');
+
+    const expected = [
+      'if condition {',
+      '  fileinto "A";',
+      '} elsif condition2 {',
+      '  fileinto "B";',
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(formatDocument(input), expected);
+  });
+
+  it('is idempotent with already-joined } elsif / } else', () => {
+    const formatted = [
+      'if condition {',
+      '  fileinto "A";',
+      '} elsif condition2 {',
+      '  fileinto "B";',
+      '} else {',
+      '  keep;',
+      '}',
+    ].join('\n');
+    assert.strictEqual(formatDocument(formatted), formatted);
+  });
+});
+
+describe('indentBlocks — block comment handling', () => {
+  it('re-indents a single-line /* comment */ like normal content', () => {
+    const input = 'if condition {\n/* inline */\nfileinto "Inbox";\n}';
+    const expected = 'if condition {\n  /* inline */\n  fileinto "Inbox";\n}';
+    assert.strictEqual(indentBlocks(input), expected);
+  });
+
+  it('preserves interior lines of a multi-line block comment verbatim', () => {
+    const input = [
+      '/*',
+      ' * top-level comment',
+      ' */',
+      'if condition {',
+      'fileinto "Inbox";',
+      '}',
+    ].join('\n');
+
+    const expected = [
+      '/*',
+      ' * top-level comment',  // preserved verbatim
+      ' */',
+      'if condition {',
+      '  fileinto "Inbox";',
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(indentBlocks(input), expected);
+  });
+
+  it('is idempotent on already-indented code with block comments', () => {
+    const input = [
+      '/*',
+      ' * comment',
+      ' */',
+      'if condition {',
+      '  fileinto "Inbox";',
+      '}',
+    ].join('\n');
+    assert.strictEqual(indentBlocks(input), input);
+  });
+
+  it('detects { after /* comment */ on the same line', () => {
+    // The block comment wraps the condition; the { is still the block opener.
+    const input = 'if /* comment */ condition {\nfileinto "Inbox";\n}';
+    const expected = 'if /* comment */ condition {\n  fileinto "Inbox";\n}';
+    assert.strictEqual(indentBlocks(input), expected);
+  });
+
+  it('does not re-indent code inside a block comment that opens mid-line', () => {
+    const input = [
+      'if condition { /*',
+      '  still inside the comment',
+      '*/ fileinto "Inbox";',
+      '}',
+    ].join('\n');
+
+    // The opening line is re-indented (level 0), interior preserved verbatim,
+    // and the closing line (* / ...) is also preserved verbatim.
+    const expected = [
+      'if condition { /*',
+      '  still inside the comment',
+      '*/ fileinto "Inbox";',
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(indentBlocks(input), expected);
+  });
+});
+
+describe('joinElsifElse', () => {
+  it('joins } + elsif onto one line', () => {
+    const input = 'if c {\naction;\n}\nelsif c2 {\naction2;\n}';
+    const expected = 'if c {\naction;\n} elsif c2 {\naction2;\n}';
+    assert.strictEqual(joinElsifElse(input), expected);
+  });
+
+  it('joins } + else onto one line', () => {
+    const input = 'if c {\naction;\n}\nelse {\nkeep;\n}';
+    const expected = 'if c {\naction;\n} else {\nkeep;\n}';
+    assert.strictEqual(joinElsifElse(input), expected);
+  });
+
+  it('consumes blank lines between } and elsif', () => {
+    const input = 'if c {\naction;\n}\n\nelsif c2 {\naction2;\n}';
+    const expected = 'if c {\naction;\n} elsif c2 {\naction2;\n}';
+    assert.strictEqual(joinElsifElse(input), expected);
+  });
+
+  it('is idempotent: } elsif already on one line is not changed', () => {
+    const input = 'if c {\naction;\n} elsif c2 {\naction2;\n}';
+    assert.strictEqual(joinElsifElse(input), input);
+  });
+
+  it('does not merge } when followed by non-elsif/else', () => {
+    const input = 'if c {\naction;\n}\nfileinto "Inbox";';
+    assert.strictEqual(joinElsifElse(input), input);
+  });
+
+  it('preserves leading indentation on the } line', () => {
+    const input = 'if outer {\n  if inner {\n    action;\n  }\n  elsif c2 {\n    action2;\n  }\n}';
+    const expected = 'if outer {\n  if inner {\n    action;\n  } elsif c2 {\n    action2;\n  }\n}';
+    assert.strictEqual(joinElsifElse(input), expected);
+  });
+});
+
+describe('formatDocument — joinElsifElse: false', () => {
+  it('leaves } and elsif on separate lines', () => {
+    const input = 'if c {\naction;\n}\nelsif c2 {\naction2;\n}';
+    // indentBlocks will still run and indent, but the structure stays separate
+    const result = formatDocument(input, { joinElsifElse: false });
+    assert.ok(result.includes('\nelsif c2 {'), 'elsif should remain on its own line');
   });
 });
