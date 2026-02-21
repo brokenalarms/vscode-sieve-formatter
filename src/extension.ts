@@ -20,6 +20,7 @@ export function activate(context: vscode.ExtensionContext) {
         const indentBlocksSetting = config.get<boolean>('indentBlocks', true);
         const joinElsifElseSetting = config.get<boolean>('joinElsifElse', true);
         const normalizeBlankLinesSetting = config.get<boolean>('normalizeBlankLines', true);
+        const sortRequireSetting = config.get<boolean>('sortRequire', false);
 
         const fullText = document.getText();
         const formattedText = formatDocument(fullText, {
@@ -29,6 +30,7 @@ export function activate(context: vscode.ExtensionContext) {
           indentBlocks: indentBlocksSetting,
           joinElsifElse: joinElsifElseSetting,
           normalizeBlankLines: normalizeBlankLinesSetting,
+          sortRequire: sortRequireSetting,
         });
 
         if (formattedText === fullText) {

@@ -6,6 +6,7 @@ import {
   indentBlocks,
   normalizeBlankLines,
   joinElsifElse,
+  sortRequireExtensions,
   formatDocument,
 } from '../formatter';
 
@@ -618,6 +619,67 @@ describe('joinElsifElse', () => {
     const input = 'if outer {\n  if inner {\n    action;\n  }\n  elsif c2 {\n    action2;\n  }\n}';
     const expected = 'if outer {\n  if inner {\n    action;\n  } elsif c2 {\n    action2;\n  }\n}';
     assert.strictEqual(joinElsifElse(input), expected);
+  });
+});
+
+describe('sortRequireExtensions', () => {
+  it('sorts extensions alphabetically', () => {
+    assert.strictEqual(
+      sortRequireExtensions('require ["vacation", "fileinto", "imap4flags"];'),
+      'require ["fileinto", "imap4flags", "vacation"];'
+    );
+  });
+
+  it('is idempotent on already-sorted extensions', () => {
+    const input = 'require ["fileinto", "imap4flags", "vacation"];';
+    assert.strictEqual(sortRequireExtensions(input), input);
+  });
+
+  it('does not change a single-extension list', () => {
+    const input = 'require ["fileinto"];';
+    assert.strictEqual(sortRequireExtensions(input), input);
+  });
+
+  it('does not change a bare string require', () => {
+    const input = 'require "fileinto";';
+    assert.strictEqual(sortRequireExtensions(input), input);
+  });
+
+  it('sorts case-insensitively', () => {
+    assert.strictEqual(
+      sortRequireExtensions('require ["Vacation", "fileinto"];'),
+      'require ["fileinto", "Vacation"];'
+    );
+  });
+
+  it('collapses a multi-line require to single-line before sorting', () => {
+    const input = 'require [\n  "vacation",\n  "fileinto"\n];';
+    assert.strictEqual(
+      sortRequireExtensions(input),
+      'require ["fileinto", "vacation"];'
+    );
+  });
+});
+
+describe('formatDocument — sortRequire: true', () => {
+  it('sorts and expands require when both options are on', () => {
+    const input = 'require ["vacation", "fileinto", "imap4flags"];\nkeep;';
+    const expected = 'require [\n  "fileinto",\n  "imap4flags",\n  "vacation"\n];\nkeep;';
+    assert.strictEqual(formatDocument(input, { sortRequire: true, alwaysExpandRequire: true }), expected);
+  });
+
+  it('sorts require but keeps it single-line when alwaysExpandRequire is off', () => {
+    const input = 'require ["vacation", "fileinto"];\nkeep;';
+    const expected = 'require ["fileinto", "vacation"];\nkeep;';
+    assert.strictEqual(formatDocument(input, { sortRequire: true }), expected);
+  });
+
+  it('is idempotent on already-sorted and expanded require', () => {
+    const formatted = 'require [\n  "fileinto",\n  "vacation"\n];\nkeep;';
+    assert.strictEqual(
+      formatDocument(formatted, { sortRequire: true, alwaysExpandRequire: true }),
+      formatted
+    );
   });
 });
 

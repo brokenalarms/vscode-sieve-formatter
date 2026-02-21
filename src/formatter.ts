@@ -356,6 +356,31 @@ export function joinElsifElse(text: string): string {
   return result.join('\n');
 }
 
+/**
+ * Sort the extensions inside a `require [...]` list alphabetically
+ * (case-insensitive). Works on both single-line and multi-line forms;
+ * multi-line requires are collapsed to a single line so that
+ * `expandListsToMultiline` (if enabled) can re-expand them consistently.
+ *
+ * A bare `require "string"` (no brackets) is left unchanged.
+ * A single-extension list is left unchanged.
+ */
+export function sortRequireExtensions(text: string): string {
+  // Match `require [...]` where the list may span multiple lines.
+  // The 'm' flag makes ^ anchor to any line start.
+  return text.replace(/^(require\s+\[)([\s\S]*?)(\])/m, (match, open: string, content: string, close: string) => {
+    // Collapse newlines / surrounding whitespace to parse items uniformly.
+    const normalized = content.replace(/\s*\n\s*/g, ' ').trim();
+    const items = splitOnCommas(normalized);
+    if (items.length <= 1) {
+      return match;
+    }
+    const sorted = [...items].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    // Rebuild as single-line so expandListsToMultiline can re-expand if enabled.
+    return `${open}${sorted.join(', ')}${close}`;
+  });
+}
+
 export interface FormatOptions {
   /** Indentation string used inside expanded lists and blocks. Default: two spaces. */
   indent?: string;
@@ -401,6 +426,15 @@ export interface FormatOptions {
    * Controlled by the `sieve.formatter.normalizeBlankLines` VS Code setting.
    */
   normalizeBlankLines?: boolean;
+  /**
+   * When true, sort the extensions inside `require [...]` alphabetically
+   * (case-insensitive). Has no effect on a bare `require "string"` or a
+   * single-extension list.
+   * Default: false.
+   *
+   * Controlled by the `sieve.formatter.sortRequire` VS Code setting.
+   */
+  sortRequire?: boolean;
 }
 
 /**
@@ -408,12 +442,13 @@ export interface FormatOptions {
  *
  * Pass order:
  *  1. removeTrailingCommas              — always
- *  2. expandListsToMultiline            — if expandLists
- *  3. joinElsifElse                     — if joinElsifElse
- *  4. indentBlocks                      — if indentBlocks
- *  5. normalizeMultilineListIndentation — if expandLists (after indentBlocks so
+ *  2. sortRequireExtensions             — if sortRequire
+ *  3. expandListsToMultiline            — if expandLists
+ *  4. joinElsifElse                     — if joinElsifElse
+ *  5. indentBlocks                      — if indentBlocks
+ *  6. normalizeMultilineListIndentation — if expandLists (after indentBlocks so
  *                                         the base indent reflects the final position)
- *  6. normalizeBlankLines               — if normalizeBlankLines
+ *  7. normalizeBlankLines               — if normalizeBlankLines
  */
 export function formatDocument(text: string, options: FormatOptions = {}): string {
   const {
@@ -423,9 +458,14 @@ export function formatDocument(text: string, options: FormatOptions = {}): strin
     indentBlocks: shouldIndentBlocks = true,
     joinElsifElse: shouldJoinElsifElse = true,
     normalizeBlankLines: shouldNormalizeBlankLines = true,
+    sortRequire: shouldSortRequire = false,
   } = options;
 
   let result = removeTrailingCommas(text);
+
+  if (shouldSortRequire) {
+    result = sortRequireExtensions(result);
+  }
 
   if (expandLists) {
     result = expandListsToMultiline(result, indent, /* skipRequire= */ !alwaysExpandRequire);
