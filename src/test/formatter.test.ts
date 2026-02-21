@@ -691,3 +691,245 @@ describe('formatDocument — joinElsifElse: false', () => {
     assert.ok(result.includes('\nelsif c2 {'), 'elsif should remain on its own line');
   });
 });
+
+// ---------------------------------------------------------------------------
+// text: heredoc handling
+// ---------------------------------------------------------------------------
+
+describe('indentBlocks — text: heredoc handling', () => {
+  it('preserves heredoc body lines verbatim inside a block', () => {
+    const input = [
+      'if condition {',
+      'vacation :reason text:',
+      'I am on holiday.',
+      'Please expect a delayed response.',
+      '.',
+      ';',
+      '}',
+    ].join('\n');
+
+    const expected = [
+      'if condition {',
+      '  vacation :reason text:',
+      'I am on holiday.',          // verbatim — heredoc body at column 0
+      'Please expect a delayed response.',
+      '.',                          // closing dot verbatim
+      '  ;',
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(indentBlocks(input), expected);
+  });
+
+  it('preserves a blank line inside the heredoc body', () => {
+    const input = [
+      'vacation :reason text:',
+      'Line one.',
+      '',
+      'Line two.',
+      '.',
+      ';',
+    ].join('\n');
+
+    // The blank line inside the heredoc must not be stripped.
+    const result = indentBlocks(input);
+    assert.strictEqual(result, input);
+  });
+
+  it('resumes normal indentation after the heredoc closes', () => {
+    const input = [
+      'if condition {',
+      'vacation :reason text:',
+      'body',
+      '.',
+      ';',
+      'stop;',
+      '}',
+    ].join('\n');
+
+    const expected = [
+      'if condition {',
+      '  vacation :reason text:',
+      'body',
+      '.',
+      '  ;',
+      '  stop;',
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(indentBlocks(input), expected);
+  });
+
+  it('is idempotent on already-indented code with a heredoc', () => {
+    const input = [
+      'if condition {',
+      '  vacation :reason text:',
+      'body',
+      '.',
+      '  ;',
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(indentBlocks(input), input);
+  });
+});
+
+describe('expandListsToMultiline — text: heredoc handling', () => {
+  it('does not expand [...] inside a heredoc body', () => {
+    // The vacation body happens to contain bracket-like text.
+    const input = [
+      'vacation :reason text:',
+      'See [section 1, section 2] for details.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(expandListsToMultiline(input), input);
+  });
+
+  it('still expands [...] on lines before the heredoc opener', () => {
+    const input = [
+      'if address :is "To" ["alice@example.com", "bob@example.com"] {',
+      'vacation :reason text:',
+      'body',
+      '.',
+      ';',
+      '}',
+    ].join('\n');
+
+    assert.ok(expandListsToMultiline(input).startsWith('if address :is "To" [\n'));
+    // The heredoc body remains untouched.
+    assert.ok(expandListsToMultiline(input).includes('\nbody\n.\n'));
+  });
+
+  it('still expands [...] on lines after the heredoc closes', () => {
+    const input = [
+      'vacation :reason text:',
+      'body',
+      '.',
+      'fileinto ["INBOX", "Archive"];',
+    ].join('\n');
+
+    const result = expandListsToMultiline(input);
+    assert.ok(result.includes('[\n  "INBOX",\n  "Archive"\n]'));
+    assert.ok(result.includes('\nbody\n.\n'));
+  });
+});
+
+describe('normalizeMultilineListIndentation — text: heredoc handling', () => {
+  it('does not reindent multi-line [...] content inside a heredoc body', () => {
+    // Contrived case: heredoc body contains [...] spanning multiple lines.
+    const input = [
+      'vacation :reason text:',
+      'See [',
+      'section 1,',
+      'section 2',
+      '] for details.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(normalizeMultilineListIndentation(input), input);
+  });
+});
+
+describe('normalizeBlankLines — text: heredoc handling', () => {
+  it('preserves multiple consecutive blank lines inside a heredoc body', () => {
+    const input = [
+      'vacation :reason text:',
+      'Paragraph one.',
+      '',
+      '',
+      'Paragraph two.',
+      '.',
+      ';',
+    ].join('\n');
+
+    // Two blank lines inside the heredoc must not be collapsed.
+    assert.strictEqual(normalizeBlankLines(input), input);
+  });
+
+  it('still collapses multiple blank lines outside the heredoc', () => {
+    const input = [
+      'require ["vacation"];',
+      '',
+      '',
+      'vacation :reason text:',
+      'body',
+      '.',
+      ';',
+    ].join('\n');
+
+    const expected = [
+      'require ["vacation"];',
+      '',
+      'vacation :reason text:',
+      'body',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(normalizeBlankLines(input), expected);
+  });
+});
+
+describe('formatDocument — text: heredoc end-to-end', () => {
+  it('formats a vacation rule without corrupting the heredoc body', () => {
+    const input = [
+      'require ["vacation",];',
+      '',
+      'if header :contains "X-Spam-Flag" ["YES", "TRUE",] {',
+      'discard;',
+      '} else {',
+      'vacation :days 7 :reason text:',
+      'I am on holiday.',
+      '',
+      'Please expect a delayed response.',
+      '.',
+      ';',
+      '}',
+    ].join('\n');
+
+    const expected = [
+      'require ["vacation"];',
+      '',
+      'if header :contains "X-Spam-Flag" [',
+      '  "YES",',
+      '  "TRUE"',
+      '] {',
+      '  discard;',
+      '} else {',
+      '  vacation :days 7 :reason text:',
+      'I am on holiday.',
+      '',                                   // blank line inside heredoc preserved
+      'Please expect a delayed response.',
+      '.',
+      '  ;',
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(formatDocument(input), expected);
+  });
+
+  it('is idempotent on a formatted vacation rule', () => {
+    const formatted = [
+      'require ["vacation"];',
+      '',
+      'if header :contains "X-Spam-Flag" [',
+      '  "YES",',
+      '  "TRUE"',
+      '] {',
+      '  discard;',
+      '} else {',
+      '  vacation :days 7 :reason text:',
+      'I am on holiday.',
+      '',
+      'Please expect a delayed response.',
+      '.',
+      '  ;',
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(formatDocument(formatted), formatted);
+  });
+});

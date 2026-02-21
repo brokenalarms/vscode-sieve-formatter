@@ -4,6 +4,63 @@
  */
 
 /**
+ * Returns true if the line opens a `text:` heredoc block.
+ *
+ * In Sieve (RFC 5228 §2.4.2) a multi-line string starts with `text:` at the
+ * end of a line (optionally followed by whitespace or a hash comment).
+ * e.g.  `vacation :reason text:`  or  `vacation :reason text: # start`
+ */
+function opensHeredoc(line: string): boolean {
+  return /\btext:\s*(?:#.*)?$/.test(line);
+}
+
+/**
+ * Returns true if the line is the closing dot of a `text:` heredoc block.
+ * Per RFC 5228 the terminator must be a lone dot at column 0.
+ */
+function closesHeredoc(line: string): boolean {
+  return line === '.';
+}
+
+/**
+ * Find the character ranges [start, end] of heredoc bodies in `text`.
+ * Each range covers the bytes from the first body line through (and including)
+ * the closing `.` line, so that regex callbacks can skip these regions.
+ */
+function findHeredocRanges(text: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  const lines = text.split('\n');
+  let pos = 0;
+  let inHeredoc = false;
+  let heredocStart = 0;
+
+  for (const line of lines) {
+    if (!inHeredoc) {
+      if (opensHeredoc(line)) {
+        inHeredoc = true;
+        // Body starts after the newline that follows the `text:` line.
+        heredocStart = pos + line.length + 1;
+      }
+    } else {
+      if (closesHeredoc(line)) {
+        inHeredoc = false;
+        ranges.push([heredocStart, pos + line.length]);
+      }
+    }
+    pos += line.length + 1; // +1 for the '\n' separator
+  }
+
+  return ranges;
+}
+
+/**
+ * Returns true if `offset` falls within any of the given heredoc ranges.
+ */
+function isInHeredocRange(offset: number, ranges: Array<[number, number]>): boolean {
+  return ranges.some(([start, end]) => offset >= start && offset <= end);
+}
+
+/**
  * Split a comma-separated string into items, respecting double-quoted strings
  * so that commas inside strings are not treated as separators.
  */
@@ -155,20 +212,41 @@ export function expandListsToMultiline(
   indent: string = '  ',
   skipRequire = true
 ): string {
-  return text.replace(/\[([^[\]\n]+)\]/g, (match, content: string, offset: number) => {
-    if (skipRequire) {
-      const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
-      const lineBefore = text.slice(lineStart, offset);
-      if (/^require\s+$/.test(lineBefore)) {
-        return match;
+  const lines = text.split('\n');
+  let inHeredoc = false;
+  const result: string[] = [];
+
+  for (const line of lines) {
+    if (inHeredoc) {
+      result.push(line);
+      if (closesHeredoc(line)) inHeredoc = false;
+      continue;
+    }
+
+    // Expand single-line [...] lists on this line, then check whether it
+    // opens a heredoc (so subsequent lines are preserved verbatim).
+    const processed = line.replace(/\[([^[\]\n]+)\]/g, (match, content: string, offset: number) => {
+      if (skipRequire) {
+        const lineBefore = line.slice(0, offset);
+        if (/^require\s+$/.test(lineBefore)) {
+          return match;
+        }
       }
+      const items = splitOnCommas(content);
+      if (items.length >= 2) {
+        return `[\n${indent}${items.join(`,\n${indent}`)}\n]`;
+      }
+      return match;
+    });
+
+    result.push(processed);
+
+    if (opensHeredoc(line)) {
+      inHeredoc = true;
     }
-    const items = splitOnCommas(content);
-    if (items.length >= 2) {
-      return `[\n${indent}${items.join(`,\n${indent}`)}\n]`;
-    }
-    return match;
-  });
+  }
+
+  return result.join('\n');
 }
 
 /**
@@ -185,8 +263,15 @@ export function normalizeMultilineListIndentation(
   text: string,
   indent: string = '  '
 ): string {
+  const heredocRanges = findHeredocRanges(text);
+
   // Match [...] that spans at least one newline; no nested brackets.
   return text.replace(/\[([^[\]]*\n[^[\]]*)\]/g, (match, content: string, offset: number) => {
+    // Skip any [...] whose opening bracket falls inside a text: heredoc body.
+    if (isInHeredocRange(offset, heredocRanges)) {
+      return match;
+    }
+
     // Determine the leading whitespace of the line that contains `[`.
     const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
     const linePrefix = text.slice(lineStart, offset);
@@ -221,10 +306,19 @@ export function indentBlocks(text: string, indent: string = '  '): string {
   let blockLevel = 0;
   let bracketDepth = 0;
   let inBlockComment = false;
+  let inHeredoc = false;
   const result: string[] = [];
 
   for (const line of lines) {
     const trimmed = line.trim();
+
+    // Inside a text: heredoc — preserve every line verbatim (including blank
+    // lines and the closing dot) so the vacation body is not corrupted.
+    if (inHeredoc) {
+      result.push(line);
+      if (closesHeredoc(line)) inHeredoc = false;
+      continue;
+    }
 
     if (trimmed === '') {
       result.push('');
@@ -300,6 +394,12 @@ export function indentBlocks(text: string, indent: string = '  '): string {
     if (bracketDepth < 0) {
       bracketDepth = 0;
     }
+
+    // If this line opens a text: heredoc, subsequent lines are body content
+    // that must be preserved verbatim.
+    if (opensHeredoc(trimmed)) {
+      inHeredoc = true;
+    }
   }
 
   return result.join('\n');
@@ -307,9 +407,39 @@ export function indentBlocks(text: string, indent: string = '  '): string {
 
 /**
  * Collapse runs of more than one consecutive blank line into a single blank line.
+ *
+ * Lines inside a `text:` heredoc body are preserved verbatim so that paragraph
+ * breaks in vacation messages are not silently discarded.
  */
 export function normalizeBlankLines(text: string): string {
-  return text.replace(/\n{3,}/g, '\n\n');
+  const lines = text.split('\n');
+  let inHeredoc = false;
+  const result: string[] = [];
+  let consecutiveBlanks = 0;
+
+  for (const line of lines) {
+    if (inHeredoc) {
+      result.push(line);
+      if (closesHeredoc(line)) inHeredoc = false;
+      continue;
+    }
+
+    if (line === '') {
+      consecutiveBlanks++;
+      // Allow at most one blank line outside heredoc sections.
+      if (consecutiveBlanks <= 1) {
+        result.push(line);
+      }
+    } else {
+      consecutiveBlanks = 0;
+      if (opensHeredoc(line)) {
+        inHeredoc = true;
+      }
+      result.push(line);
+    }
+  }
+
+  return result.join('\n');
 }
 
 /**
