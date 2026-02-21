@@ -110,6 +110,28 @@ describe('expandListsToMultiline', () => {
   });
 });
 
+describe('formatDocument — expandLists: false', () => {
+  it('still removes trailing commas', () => {
+    assert.strictEqual(
+      formatDocument('["a", "b",]', { expandLists: false }),
+      '["a", "b"]'
+    );
+  });
+
+  it('leaves multi-item lists on a single line', () => {
+    const input = 'if address :is "From" ["alice@example.com", "bob@example.com"] {';
+    assert.strictEqual(formatDocument(input, { expandLists: false }), input);
+  });
+
+  it('alwaysExpandRequire has no effect when expandLists is false', () => {
+    const input = 'require ["fileinto", "imap4flags"];';
+    assert.strictEqual(
+      formatDocument(input, { expandLists: false, alwaysExpandRequire: true }),
+      input
+    );
+  });
+});
+
 describe('formatDocument', () => {
   it('removes trailing commas and expands multi-item lists', () => {
     const input = 'fileinto ["Inbox","Spam",];';

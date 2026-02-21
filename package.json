@@ -34,10 +34,15 @@
     "configuration": {
       "title": "Sieve Formatter",
       "properties": {
+        "sieve.formatter.expandLists": {
+          "type": "boolean",
+          "default": true,
+          "description": "Expand string lists with 2 or more items to one-item-per-line. Disable to keep all lists on a single line."
+        },
         "sieve.formatter.alwaysExpandRequire": {
           "type": "boolean",
           "default": false,
-          "description": "Always expand the require statement to multi-line, even when it lists only one extension. Useful for keeping require consistently multi-line as rules grow."
+          "description": "Expand the require list to multi-line when it contains 2 or more extensions, using the same rule as other lists. Has no effect when expandLists is disabled."
         }
       }
     }

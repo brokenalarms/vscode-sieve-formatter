@@ -41,7 +41,8 @@ Both transformations run together when you format a document (`Shift+Alt+F` / Fo
 
 | Setting | Default | Description |
 |---|---|---|
-| `sieve.formatter.alwaysExpandRequire` | `false` | Expand `require` to multi-line when it lists 2 or more extensions, using the same rule as other lists. Single-item `require` is never expanded. |
+| `sieve.formatter.expandLists` | `true` | Expand string lists with 2 or more items to one-item-per-line. Disable to keep all lists on a single line. |
+| `sieve.formatter.alwaysExpandRequire` | `false` | Expand `require` to multi-line when it lists 2 or more extensions, using the same rule as other lists. Single-item `require` is never expanded. Has no effect when `expandLists` is disabled. |
 
 With `alwaysExpandRequire` enabled:
 
@@ -80,7 +81,6 @@ Press **F5** to launch an Extension Development Host with the extension loaded.
 ## Roadmap
 
 - [ ] Normalise indentation of lists that are already multi-line but inconsistently indented
-- [ ] `sieve.formatter.expandLists` setting to opt out of multi-line expansion
 - [ ] Syntax highlighting
 
 ## Contributing

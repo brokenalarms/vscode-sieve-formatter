@@ -38,6 +38,7 @@ Avoid VS Code integration tests (`@vscode/test-electron`) unless testing somethi
 Settings are declared in `package.json` under `contributes.configuration` and read in `extension.ts` via `vscode.workspace.getConfiguration('sieve.formatter')`. Add new settings there; do not hard-code behaviour that users might want to control.
 
 Current settings:
+- `sieve.formatter.expandLists` (bool, default `true`)
 - `sieve.formatter.alwaysExpandRequire` (bool, default `false`)
 
 ## Packaging
@@ -57,5 +58,4 @@ Standard Sieve (RFC 5228) uses `[...]` for string lists — there are no `()`-st
 ## Roadmap
 
 - Normalise already-multi-line lists with inconsistent indentation
-- `sieve.formatter.expandLists` setting to opt out of multi-line expansion entirely
 - Syntax highlighting (`.tmLanguage.json` grammar)

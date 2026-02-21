@@ -80,9 +80,17 @@ export interface FormatOptions {
   /** Indentation string used inside expanded lists. Default: two spaces. */
   indent?: string;
   /**
+   * When false, single-line lists with 2+ items are left as-is.
+   * Default: true.
+   *
+   * Controlled by the `sieve.formatter.expandLists` VS Code setting.
+   */
+  expandLists?: boolean;
+  /**
    * When true, the `require` list is expanded to multi-line when it contains
    * 2 or more extensions — the same rule applied to all other lists.
    * By default, `require` is left on a single line regardless of extension count.
+   * Has no effect when `expandLists` is false.
    *
    * Controlled by the `sieve.formatter.alwaysExpandRequire` VS Code setting.
    */
@@ -93,8 +101,10 @@ export interface FormatOptions {
  * Apply all formatting passes to a Sieve document.
  */
 export function formatDocument(text: string, options: FormatOptions = {}): string {
-  const { indent = '  ', alwaysExpandRequire = false } = options;
+  const { indent = '  ', expandLists = true, alwaysExpandRequire = false } = options;
   let result = removeTrailingCommas(text);
-  result = expandListsToMultiline(result, indent, /* skipRequire= */ !alwaysExpandRequire);
+  if (expandLists) {
+    result = expandListsToMultiline(result, indent, /* skipRequire= */ !alwaysExpandRequire);
+  }
   return result;
 }
