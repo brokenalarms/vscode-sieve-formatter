@@ -321,14 +321,19 @@ export function normalizeMultilineListIndentation(
     const baseIndent = /^(\s*)/.exec(linePrefix)?.[1] ?? '';
     const itemIndent = baseIndent + indent;
 
-    // Collapse all whitespace around newlines, then parse as comma-separated items.
-    const normalized = content.replace(/\s*\n\s*/g, ' ').trim();
-    const items = splitOnCommas(normalized);
-    if (items.length === 0) {
+    // Re-indent each line verbatim: trim leading whitespace and apply itemIndent.
+    // Processing line-by-line preserves inline # comments on item lines.
+    const processedLines = content
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l !== '')
+      .map(l => itemIndent + l);
+
+    if (processedLines.length === 0) {
       return match;
     }
 
-    return `[\n${itemIndent}${items.join(`,\n${itemIndent}`)}\n${baseIndent}]`;
+    return `[\n${processedLines.join('\n')}\n${baseIndent}]`;
   });
 }
 
@@ -369,9 +374,10 @@ export function indentBlocks(text: string, indent: string = '  '): string {
       continue;
     }
 
-    // Inside a multi-line list or parenthesised argument group — preserve verbatim.
+    // Inside a multi-line list or parenthesised argument group — preserve verbatim,
+    // except when the line closes all groupings and opens a block, in which case
+    // re-indent it to align with the controlling if/elsif statement.
     if (bracketDepth > 0 || parenDepth > 0) {
-      result.push(line);
       bracketDepth +=
         countCharsOutsideStrings(trimmed, '[') -
         countCharsOutsideStrings(trimmed, ']');
@@ -384,14 +390,17 @@ export function indentBlocks(text: string, indent: string = '  '): string {
       if (parenDepth < 0) {
         parenDepth = 0;
       }
-      // Handle `] {` / `) {` — grouping closed and block opened on the same line.
       if (bracketDepth === 0 && parenDepth === 0) {
         const { effective } = stripLineBlockComments(trimmed);
         const withoutComment = effective.replace(/#.*$/, '').trimEnd();
         if (withoutComment.endsWith('{')) {
+          // ]) { or ) { — re-indent to match the if statement, then open block.
+          result.push(indent.repeat(blockLevel) + trimmed);
           blockLevel++;
+          continue;
         }
       }
+      result.push(line);
       continue;
     }
 

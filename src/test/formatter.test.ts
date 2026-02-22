@@ -217,6 +217,17 @@ describe('normalizeMultilineListIndentation', () => {
     const expected = 'fileinto [\n\t"INBOX",\n\t"Spam"\n]';
     assert.strictEqual(normalizeMultilineListIndentation(input, '\t'), expected);
   });
+
+  it('preserves inline # comments on item lines', () => {
+    const input = 'fileinto [\n"INBOX", # main inbox\n"Spam" # junk\n]';
+    const expected = 'fileinto [\n  "INBOX", # main inbox\n  "Spam" # junk\n]';
+    assert.strictEqual(normalizeMultilineListIndentation(input), expected);
+  });
+
+  it('is idempotent on items with inline comments', () => {
+    const input = 'fileinto [\n  "INBOX", # main inbox\n  "Spam" # junk\n]';
+    assert.strictEqual(normalizeMultilineListIndentation(input), input);
+  });
 });
 
 describe('indentBlocks', () => {
@@ -384,6 +395,32 @@ describe('indentBlocks', () => {
       '}',
     ].join('\n');
     assert.strictEqual(indentBlocks(input), input);
+  });
+
+  it('re-indents ]) { to match the if statement when over-indented', () => {
+    // ]) { at 2-space indent should move to 0 (same level as the if),
+    // and block body at 4-space indent should normalise to 2.
+    const input = [
+      'if allof(',
+      '  header :regex "Subject" [',
+      '    "spam"',
+      '  ],',
+      '  not header :is "From" "trusted@example.com"',
+      '  ]) {',
+      '    fileinto "Spam";',
+      '}',
+    ].join('\n');
+    const expected = [
+      'if allof(',
+      '  header :regex "Subject" [',
+      '    "spam"',
+      '  ],',
+      '  not header :is "From" "trusted@example.com"',
+      ']) {',
+      '  fileinto "Spam";',
+      '}',
+    ].join('\n');
+    assert.strictEqual(indentBlocks(input), expected);
   });
 });
 
