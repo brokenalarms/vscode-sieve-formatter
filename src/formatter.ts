@@ -4,6 +4,63 @@
  */
 
 /**
+ * Returns true if the line opens a `text:` heredoc block.
+ *
+ * In Sieve (RFC 5228 §2.4.2) a multi-line string starts with `text:` at the
+ * end of a line (optionally followed by whitespace or a hash comment).
+ * e.g.  `vacation :reason text:`  or  `vacation :reason text: # start`
+ */
+function opensHeredoc(line: string): boolean {
+  return /\btext:\s*(?:#.*)?$/.test(line);
+}
+
+/**
+ * Returns true if the line is the closing dot of a `text:` heredoc block.
+ * Per RFC 5228 the terminator must be a lone dot at column 0.
+ */
+function closesHeredoc(line: string): boolean {
+  return line === '.';
+}
+
+/**
+ * Find the character ranges [start, end] of heredoc bodies in `text`.
+ * Each range covers the bytes from the first body line through (and including)
+ * the closing `.` line, so that regex callbacks can skip these regions.
+ */
+function findHeredocRanges(text: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  const lines = text.split('\n');
+  let pos = 0;
+  let inHeredoc = false;
+  let heredocStart = 0;
+
+  for (const line of lines) {
+    if (!inHeredoc) {
+      if (opensHeredoc(line)) {
+        inHeredoc = true;
+        // Body starts after the newline that follows the `text:` line.
+        heredocStart = pos + line.length + 1;
+      }
+    } else {
+      if (closesHeredoc(line)) {
+        inHeredoc = false;
+        ranges.push([heredocStart, pos + line.length]);
+      }
+    }
+    pos += line.length + 1; // +1 for the '\n' separator
+  }
+
+  return ranges;
+}
+
+/**
+ * Returns true if `offset` falls within any of the given heredoc ranges.
+ */
+function isInHeredocRange(offset: number, ranges: Array<[number, number]>): boolean {
+  return ranges.some(([start, end]) => offset >= start && offset <= end);
+}
+
+/**
  * Split a comma-separated string into items, respecting double-quoted strings
  * so that commas inside strings are not treated as separators.
  */
@@ -104,8 +161,51 @@ function stripLineBlockComments(line: string): { effective: string; opensBlockCo
  *      fileinto("x",)  →  fileinto("x")
  *
  * Commas inside double-quoted strings are never removed.
+ * Lines inside a `text:` heredoc body are preserved verbatim so that
+ * prose containing patterns like `,]` is not corrupted.
  */
 export function removeTrailingCommas(text: string): string {
+  // Split into consecutive heredoc / non-heredoc segments and apply the
+  // character-level pass only to non-heredoc content.  Segments are rejoined
+  // with '\n' which reconstructs the original line boundaries exactly.
+  const lines = text.split('\n');
+  const segments: { lines: string[]; isHeredoc: boolean }[] = [];
+  let currentLines: string[] = [];
+  let inHeredoc = false;
+
+  for (const line of lines) {
+    if (!inHeredoc) {
+      currentLines.push(line);
+      if (opensHeredoc(line)) {
+        inHeredoc = true;
+        segments.push({ lines: currentLines, isHeredoc: false });
+        currentLines = [];
+      }
+    } else {
+      currentLines.push(line);
+      if (closesHeredoc(line)) {
+        inHeredoc = false;
+        segments.push({ lines: currentLines, isHeredoc: true });
+        currentLines = [];
+      }
+    }
+  }
+  if (currentLines.length > 0) {
+    segments.push({ lines: currentLines, isHeredoc: false });
+  }
+
+  return segments
+    .map(({ lines: segLines, isHeredoc }) =>
+      isHeredoc ? segLines.join('\n') : removeTrailingCommasRaw(segLines.join('\n'))
+    )
+    .join('\n');
+}
+
+/**
+ * Core character-by-character trailing-comma removal. Operates on a single
+ * non-heredoc segment of text (may still contain newlines).
+ */
+function removeTrailingCommasRaw(text: string): string {
   let result = '';
   let inString = false;
 
@@ -155,20 +255,41 @@ export function expandListsToMultiline(
   indent: string = '  ',
   skipRequire = true
 ): string {
-  return text.replace(/\[([^[\]\n]+)\]/g, (match, content: string, offset: number) => {
-    if (skipRequire) {
-      const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
-      const lineBefore = text.slice(lineStart, offset);
-      if (/^require\s+$/.test(lineBefore)) {
-        return match;
+  const lines = text.split('\n');
+  let inHeredoc = false;
+  const result: string[] = [];
+
+  for (const line of lines) {
+    if (inHeredoc) {
+      result.push(line);
+      if (closesHeredoc(line)) inHeredoc = false;
+      continue;
+    }
+
+    // Expand single-line [...] lists on this line, then check whether it
+    // opens a heredoc (so subsequent lines are preserved verbatim).
+    const processed = line.replace(/\[([^[\]\n]+)\]/g, (match, content: string, offset: number) => {
+      if (skipRequire) {
+        const lineBefore = line.slice(0, offset);
+        if (/^require\s+$/.test(lineBefore)) {
+          return match;
+        }
       }
+      const items = splitOnCommas(content);
+      if (items.length >= 2) {
+        return `[\n${indent}${items.join(`,\n${indent}`)}\n]`;
+      }
+      return match;
+    });
+
+    result.push(processed);
+
+    if (opensHeredoc(line)) {
+      inHeredoc = true;
     }
-    const items = splitOnCommas(content);
-    if (items.length >= 2) {
-      return `[\n${indent}${items.join(`,\n${indent}`)}\n]`;
-    }
-    return match;
-  });
+  }
+
+  return result.join('\n');
 }
 
 /**
@@ -185,22 +306,34 @@ export function normalizeMultilineListIndentation(
   text: string,
   indent: string = '  '
 ): string {
+  const heredocRanges = findHeredocRanges(text);
+
   // Match [...] that spans at least one newline; no nested brackets.
   return text.replace(/\[([^[\]]*\n[^[\]]*)\]/g, (match, content: string, offset: number) => {
+    // Skip any [...] whose opening bracket falls inside a text: heredoc body.
+    if (isInHeredocRange(offset, heredocRanges)) {
+      return match;
+    }
+
     // Determine the leading whitespace of the line that contains `[`.
     const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
     const linePrefix = text.slice(lineStart, offset);
     const baseIndent = /^(\s*)/.exec(linePrefix)?.[1] ?? '';
     const itemIndent = baseIndent + indent;
 
-    // Collapse all whitespace around newlines, then parse as comma-separated items.
-    const normalized = content.replace(/\s*\n\s*/g, ' ').trim();
-    const items = splitOnCommas(normalized);
-    if (items.length === 0) {
+    // Re-indent each line verbatim: trim leading whitespace and apply itemIndent.
+    // Processing line-by-line preserves inline # comments on item lines.
+    const processedLines = content
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l !== '')
+      .map(l => itemIndent + l);
+
+    if (processedLines.length === 0) {
       return match;
     }
 
-    return `[\n${itemIndent}${items.join(`,\n${itemIndent}`)}\n${baseIndent}]`;
+    return `[\n${processedLines.join('\n')}\n${baseIndent}]`;
   });
 }
 
@@ -220,34 +353,54 @@ export function indentBlocks(text: string, indent: string = '  '): string {
   const lines = text.split('\n');
   let blockLevel = 0;
   let bracketDepth = 0;
+  let parenDepth = 0;
   let inBlockComment = false;
+  let inHeredoc = false;
   const result: string[] = [];
 
   for (const line of lines) {
     const trimmed = line.trim();
+
+    // Inside a text: heredoc — preserve every line verbatim (including blank
+    // lines and the closing dot) so the vacation body is not corrupted.
+    if (inHeredoc) {
+      result.push(line);
+      if (closesHeredoc(line)) inHeredoc = false;
+      continue;
+    }
 
     if (trimmed === '') {
       result.push('');
       continue;
     }
 
-    // Inside a multi-line list — preserve verbatim and track bracket depth.
-    if (bracketDepth > 0) {
-      result.push(line);
+    // Inside a multi-line list or parenthesised argument group — preserve verbatim,
+    // except when the line closes all groupings and opens a block, in which case
+    // re-indent it to align with the controlling if/elsif statement.
+    if (bracketDepth > 0 || parenDepth > 0) {
       bracketDepth +=
         countCharsOutsideStrings(trimmed, '[') -
         countCharsOutsideStrings(trimmed, ']');
       if (bracketDepth < 0) {
         bracketDepth = 0;
       }
-      // Handle `] {` — list closed and block opened on the same line.
-      if (bracketDepth === 0) {
+      parenDepth +=
+        countCharsOutsideStrings(trimmed, '(') -
+        countCharsOutsideStrings(trimmed, ')');
+      if (parenDepth < 0) {
+        parenDepth = 0;
+      }
+      if (bracketDepth === 0 && parenDepth === 0) {
         const { effective } = stripLineBlockComments(trimmed);
         const withoutComment = effective.replace(/#.*$/, '').trimEnd();
         if (withoutComment.endsWith('{')) {
+          // ]) { or ) { — re-indent to match the if statement, then open block.
+          result.push(indent.repeat(blockLevel) + trimmed);
           blockLevel++;
+          continue;
         }
       }
+      result.push(line);
       continue;
     }
 
@@ -271,6 +424,12 @@ export function indentBlocks(text: string, indent: string = '  '): string {
         if (bracketDepth < 0) {
           bracketDepth = 0;
         }
+        parenDepth +=
+          countCharsOutsideStrings(effective, '(') -
+          countCharsOutsideStrings(effective, ')');
+        if (parenDepth < 0) {
+          parenDepth = 0;
+        }
       }
       continue;
     }
@@ -293,12 +452,24 @@ export function indentBlocks(text: string, indent: string = '  '): string {
       blockLevel++;
     }
 
-    // Track bracket depth so content inside [...] is skipped on subsequent lines.
+    // Track bracket and paren depth so content inside [...] / (...) is preserved.
     bracketDepth +=
       countCharsOutsideStrings(effective, '[') -
       countCharsOutsideStrings(effective, ']');
     if (bracketDepth < 0) {
       bracketDepth = 0;
+    }
+    parenDepth +=
+      countCharsOutsideStrings(effective, '(') -
+      countCharsOutsideStrings(effective, ')');
+    if (parenDepth < 0) {
+      parenDepth = 0;
+    }
+
+    // If this line opens a text: heredoc, subsequent lines are body content
+    // that must be preserved verbatim.
+    if (opensHeredoc(trimmed)) {
+      inHeredoc = true;
     }
   }
 
@@ -307,9 +478,39 @@ export function indentBlocks(text: string, indent: string = '  '): string {
 
 /**
  * Collapse runs of more than one consecutive blank line into a single blank line.
+ *
+ * Lines inside a `text:` heredoc body are preserved verbatim so that paragraph
+ * breaks in vacation messages are not silently discarded.
  */
 export function normalizeBlankLines(text: string): string {
-  return text.replace(/\n{3,}/g, '\n\n');
+  const lines = text.split('\n');
+  let inHeredoc = false;
+  const result: string[] = [];
+  let consecutiveBlanks = 0;
+
+  for (const line of lines) {
+    if (inHeredoc) {
+      result.push(line);
+      if (closesHeredoc(line)) inHeredoc = false;
+      continue;
+    }
+
+    if (line === '') {
+      consecutiveBlanks++;
+      // Allow at most one blank line outside heredoc sections.
+      if (consecutiveBlanks <= 1) {
+        result.push(line);
+      }
+    } else {
+      consecutiveBlanks = 0;
+      if (opensHeredoc(line)) {
+        inHeredoc = true;
+      }
+      result.push(line);
+    }
+  }
+
+  return result.join('\n');
 }
 
 /**
@@ -327,8 +528,21 @@ export function normalizeBlankLines(text: string): string {
 export function joinElsifElse(text: string): string {
   const lines = text.split('\n');
   const result: string[] = [];
+  let inHeredoc = false;
 
   for (let i = 0; i < lines.length; i++) {
+    if (inHeredoc) {
+      result.push(lines[i]);
+      if (closesHeredoc(lines[i])) inHeredoc = false;
+      continue;
+    }
+
+    if (opensHeredoc(lines[i])) {
+      inHeredoc = true;
+      result.push(lines[i]);
+      continue;
+    }
+
     const trimmed = lines[i].trim();
 
     // Only consider lines that are exactly `}` (no other content).
@@ -364,8 +578,46 @@ export function joinElsifElse(text: string): string {
  *
  * A bare `require "string"` (no brackets) is left unchanged.
  * A single-extension list is left unchanged.
+ *
+ * Lines inside a `text:` heredoc body are skipped so that prose which
+ * happens to start a line with `require [...]` is never re-ordered.
  */
 export function sortRequireExtensions(text: string): string {
+  // Apply only to non-heredoc segments (same principle as all other passes).
+  const lines = text.split('\n');
+  const segments: { lines: string[]; isHeredoc: boolean }[] = [];
+  let currentLines: string[] = [];
+  let inHeredoc = false;
+
+  for (const line of lines) {
+    if (!inHeredoc) {
+      currentLines.push(line);
+      if (opensHeredoc(line)) {
+        inHeredoc = true;
+        segments.push({ lines: currentLines, isHeredoc: false });
+        currentLines = [];
+      }
+    } else {
+      currentLines.push(line);
+      if (closesHeredoc(line)) {
+        inHeredoc = false;
+        segments.push({ lines: currentLines, isHeredoc: true });
+        currentLines = [];
+      }
+    }
+  }
+  if (currentLines.length > 0) {
+    segments.push({ lines: currentLines, isHeredoc: false });
+  }
+
+  return segments
+    .map(({ lines: segLines, isHeredoc }) =>
+      isHeredoc ? segLines.join('\n') : sortRequireExtensionsRaw(segLines.join('\n'))
+    )
+    .join('\n');
+}
+
+function sortRequireExtensionsRaw(text: string): string {
   // Match `require [...]` where the list may span multiple lines.
   // The 'm' flag makes ^ anchor to any line start.
   return text.replace(/^(require\s+\[)([\s\S]*?)(\])/m, (match, open: string, content: string, close: string) => {

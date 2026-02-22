@@ -62,6 +62,61 @@ describe('removeTrailingCommas', () => {
   });
 });
 
+describe('removeTrailingCommas — text: heredoc handling', () => {
+  it('does not remove ,] inside a heredoc body', () => {
+    const input = [
+      'vacation :reason text:',
+      'Please reply to the list [members, owners,].',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(removeTrailingCommas(input), input);
+  });
+
+  it('does not remove ,) inside a heredoc body', () => {
+    const input = [
+      'vacation :reason text:',
+      'Call foo(bar,) for details.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(removeTrailingCommas(input), input);
+  });
+
+  it('still removes trailing commas in code outside the heredoc', () => {
+    const input = [
+      'require ["vacation",];',
+      'vacation :reason text:',
+      'body',
+      '.',
+      ';',
+    ].join('\n');
+
+    const expected = [
+      'require ["vacation"];',
+      'vacation :reason text:',
+      'body',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(removeTrailingCommas(input), expected);
+  });
+
+  it('is idempotent on a heredoc with comma-like prose', () => {
+    const input = [
+      'vacation :reason text:',
+      'Items [a, b,] are listed above.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(removeTrailingCommas(removeTrailingCommas(input)), input);
+  });
+});
+
 describe('expandListsToMultiline', () => {
   it('expands a 2-item list to multi-line', () => {
     const input = '["item1", "item2"]';
@@ -161,6 +216,17 @@ describe('normalizeMultilineListIndentation', () => {
     const input = 'fileinto [\n"INBOX",\n"Spam"\n]';
     const expected = 'fileinto [\n\t"INBOX",\n\t"Spam"\n]';
     assert.strictEqual(normalizeMultilineListIndentation(input, '\t'), expected);
+  });
+
+  it('preserves inline # comments on item lines', () => {
+    const input = 'fileinto [\n"INBOX", # main inbox\n"Spam" # junk\n]';
+    const expected = 'fileinto [\n  "INBOX", # main inbox\n  "Spam" # junk\n]';
+    assert.strictEqual(normalizeMultilineListIndentation(input), expected);
+  });
+
+  it('is idempotent on items with inline comments', () => {
+    const input = 'fileinto [\n  "INBOX", # main inbox\n  "Spam" # junk\n]';
+    assert.strictEqual(normalizeMultilineListIndentation(input), input);
   });
 });
 
@@ -268,6 +334,93 @@ describe('indentBlocks', () => {
   it('does not change top-level statements with no blocks', () => {
     const input = 'require ["fileinto"];\nfileinto "Inbox";';
     assert.strictEqual(indentBlocks(input), input);
+  });
+
+  it('preserves lines inside multi-line allof(...) verbatim', () => {
+    const input = [
+      'if allof(',
+      '  header :is "X-Spam" "yes",',
+      '  not header :is "From" "trusted@example.com"',
+      ') {',
+      'fileinto "Spam";',
+      '}',
+    ].join('\n');
+    const expected = [
+      'if allof(',
+      '  header :is "X-Spam" "yes",',
+      '  not header :is "From" "trusted@example.com"',
+      ') {',
+      '  fileinto "Spam";',
+      '}',
+    ].join('\n');
+    assert.strictEqual(indentBlocks(input), expected);
+  });
+
+  it('preserves indentation of [...] lists nested inside allof(...)', () => {
+    const input = [
+      'if allof(',
+      '  header :regex "Subject" [',
+      '    "spam",',
+      '    "offer"',
+      '  ],',
+      '  not header :is "From" "trusted@example.com"',
+      ') {',
+      'fileinto "Spam";',
+      '}',
+    ].join('\n');
+    const expected = [
+      'if allof(',
+      '  header :regex "Subject" [',
+      '    "spam",',
+      '    "offer"',
+      '  ],',
+      '  not header :is "From" "trusted@example.com"',
+      ') {',
+      '  fileinto "Spam";',
+      '}',
+    ].join('\n');
+    assert.strictEqual(indentBlocks(input), expected);
+  });
+
+  it('is idempotent on allof(...) with nested lists', () => {
+    const input = [
+      'if allof(',
+      '  header :regex "Subject" [',
+      '    "spam",',
+      '    "offer"',
+      '  ],',
+      '  not header :is "From" "trusted@example.com"',
+      ') {',
+      '  fileinto "Spam";',
+      '}',
+    ].join('\n');
+    assert.strictEqual(indentBlocks(input), input);
+  });
+
+  it('re-indents ]) { to match the if statement when over-indented', () => {
+    // ]) { at 2-space indent should move to 0 (same level as the if),
+    // and block body at 4-space indent should normalise to 2.
+    const input = [
+      'if allof(',
+      '  header :regex "Subject" [',
+      '    "spam"',
+      '  ],',
+      '  not header :is "From" "trusted@example.com"',
+      '  ]) {',
+      '    fileinto "Spam";',
+      '}',
+    ].join('\n');
+    const expected = [
+      'if allof(',
+      '  header :regex "Subject" [',
+      '    "spam"',
+      '  ],',
+      '  not header :is "From" "trusted@example.com"',
+      ']) {',
+      '  fileinto "Spam";',
+      '}',
+    ].join('\n');
+    assert.strictEqual(indentBlocks(input), expected);
   });
 });
 
@@ -622,6 +775,77 @@ describe('joinElsifElse', () => {
   });
 });
 
+describe('joinElsifElse — text: heredoc handling', () => {
+  it('does not merge a lone } followed by else inside a heredoc body', () => {
+    const input = [
+      'require ["vacation"];',
+      'vacation :reason text:',
+      '}',
+      'else use this address.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(joinElsifElse(input), input);
+  });
+
+  it('does not merge a lone } followed by elsif inside a heredoc body', () => {
+    const input = [
+      'require ["vacation"];',
+      'vacation :reason text:',
+      '}',
+      'elsif you prefer, call instead.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(joinElsifElse(input), input);
+  });
+
+  it('still merges } + elsif in real code outside the heredoc', () => {
+    const input = [
+      'if header :is "X-Spam" "yes" {',
+      '  discard;',
+      '}',
+      'elsif header :is "X-List" "dev" {',
+      '  fileinto "Dev";',
+      '}',
+      'vacation :reason text:',
+      '}',
+      'else see above.',
+      '.',
+      ';',
+    ].join('\n');
+
+    const expected = [
+      'if header :is "X-Spam" "yes" {',
+      '  discard;',
+      '} elsif header :is "X-List" "dev" {',
+      '  fileinto "Dev";',
+      '}',
+      'vacation :reason text:',
+      '}',
+      'else see above.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(joinElsifElse(input), expected);
+  });
+
+  it('is idempotent on a heredoc containing } / else lines', () => {
+    const input = [
+      'vacation :reason text:',
+      '}',
+      'else try again.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(joinElsifElse(joinElsifElse(input)), input);
+  });
+});
+
 describe('sortRequireExtensions', () => {
   it('sorts extensions alphabetically', () => {
     assert.strictEqual(
@@ -661,6 +885,52 @@ describe('sortRequireExtensions', () => {
   });
 });
 
+describe('sortRequireExtensions — text: heredoc handling', () => {
+  it('does not sort a require-like list inside a heredoc body', () => {
+    const input = [
+      'require ["vacation"];',
+      'vacation :reason text:',
+      'require ["z", "a", "m"] for details.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(sortRequireExtensions(input), input);
+  });
+
+  it('still sorts the real require statement before the heredoc', () => {
+    const input = [
+      'require ["vacation", "fileinto"];',
+      'vacation :reason text:',
+      'require ["z", "a"] in body.',
+      '.',
+      ';',
+    ].join('\n');
+
+    const expected = [
+      'require ["fileinto", "vacation"];',
+      'vacation :reason text:',
+      'require ["z", "a"] in body.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(sortRequireExtensions(input), expected);
+  });
+
+  it('is idempotent on a script with a heredoc', () => {
+    const input = [
+      'require ["fileinto", "vacation"];',
+      'vacation :reason text:',
+      'require ["z", "a"] in body.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(sortRequireExtensions(sortRequireExtensions(input)), input);
+  });
+});
+
 describe('formatDocument — sortRequire: true', () => {
   it('sorts and expands require when both options are on', () => {
     const input = 'require ["vacation", "fileinto", "imap4flags"];\nkeep;';
@@ -689,5 +959,247 @@ describe('formatDocument — joinElsifElse: false', () => {
     // indentBlocks will still run and indent, but the structure stays separate
     const result = formatDocument(input, { joinElsifElse: false });
     assert.ok(result.includes('\nelsif c2 {'), 'elsif should remain on its own line');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// text: heredoc handling
+// ---------------------------------------------------------------------------
+
+describe('indentBlocks — text: heredoc handling', () => {
+  it('preserves heredoc body lines verbatim inside a block', () => {
+    const input = [
+      'if condition {',
+      'vacation :reason text:',
+      'I am on holiday.',
+      'Please expect a delayed response.',
+      '.',
+      ';',
+      '}',
+    ].join('\n');
+
+    const expected = [
+      'if condition {',
+      '  vacation :reason text:',
+      'I am on holiday.',          // verbatim — heredoc body at column 0
+      'Please expect a delayed response.',
+      '.',                          // closing dot verbatim
+      '  ;',
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(indentBlocks(input), expected);
+  });
+
+  it('preserves a blank line inside the heredoc body', () => {
+    const input = [
+      'vacation :reason text:',
+      'Line one.',
+      '',
+      'Line two.',
+      '.',
+      ';',
+    ].join('\n');
+
+    // The blank line inside the heredoc must not be stripped.
+    const result = indentBlocks(input);
+    assert.strictEqual(result, input);
+  });
+
+  it('resumes normal indentation after the heredoc closes', () => {
+    const input = [
+      'if condition {',
+      'vacation :reason text:',
+      'body',
+      '.',
+      ';',
+      'stop;',
+      '}',
+    ].join('\n');
+
+    const expected = [
+      'if condition {',
+      '  vacation :reason text:',
+      'body',
+      '.',
+      '  ;',
+      '  stop;',
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(indentBlocks(input), expected);
+  });
+
+  it('is idempotent on already-indented code with a heredoc', () => {
+    const input = [
+      'if condition {',
+      '  vacation :reason text:',
+      'body',
+      '.',
+      '  ;',
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(indentBlocks(input), input);
+  });
+});
+
+describe('expandListsToMultiline — text: heredoc handling', () => {
+  it('does not expand [...] inside a heredoc body', () => {
+    // The vacation body happens to contain bracket-like text.
+    const input = [
+      'vacation :reason text:',
+      'See [section 1, section 2] for details.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(expandListsToMultiline(input), input);
+  });
+
+  it('still expands [...] on lines before the heredoc opener', () => {
+    const input = [
+      'if address :is "To" ["alice@example.com", "bob@example.com"] {',
+      'vacation :reason text:',
+      'body',
+      '.',
+      ';',
+      '}',
+    ].join('\n');
+
+    assert.ok(expandListsToMultiline(input).startsWith('if address :is "To" [\n'));
+    // The heredoc body remains untouched.
+    assert.ok(expandListsToMultiline(input).includes('\nbody\n.\n'));
+  });
+
+  it('still expands [...] on lines after the heredoc closes', () => {
+    const input = [
+      'vacation :reason text:',
+      'body',
+      '.',
+      'fileinto ["INBOX", "Archive"];',
+    ].join('\n');
+
+    const result = expandListsToMultiline(input);
+    assert.ok(result.includes('[\n  "INBOX",\n  "Archive"\n]'));
+    assert.ok(result.includes('\nbody\n.\n'));
+  });
+});
+
+describe('normalizeMultilineListIndentation — text: heredoc handling', () => {
+  it('does not reindent multi-line [...] content inside a heredoc body', () => {
+    // Contrived case: heredoc body contains [...] spanning multiple lines.
+    const input = [
+      'vacation :reason text:',
+      'See [',
+      'section 1,',
+      'section 2',
+      '] for details.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(normalizeMultilineListIndentation(input), input);
+  });
+});
+
+describe('normalizeBlankLines — text: heredoc handling', () => {
+  it('preserves multiple consecutive blank lines inside a heredoc body', () => {
+    const input = [
+      'vacation :reason text:',
+      'Paragraph one.',
+      '',
+      '',
+      'Paragraph two.',
+      '.',
+      ';',
+    ].join('\n');
+
+    // Two blank lines inside the heredoc must not be collapsed.
+    assert.strictEqual(normalizeBlankLines(input), input);
+  });
+
+  it('still collapses multiple blank lines outside the heredoc', () => {
+    const input = [
+      'require ["vacation"];',
+      '',
+      '',
+      'vacation :reason text:',
+      'body',
+      '.',
+      ';',
+    ].join('\n');
+
+    const expected = [
+      'require ["vacation"];',
+      '',
+      'vacation :reason text:',
+      'body',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(normalizeBlankLines(input), expected);
+  });
+});
+
+describe('formatDocument — text: heredoc end-to-end', () => {
+  it('formats a vacation rule without corrupting the heredoc body', () => {
+    const input = [
+      'require ["vacation",];',
+      '',
+      'if header :contains "X-Spam-Flag" ["YES", "TRUE",] {',
+      'discard;',
+      '} else {',
+      'vacation :days 7 :reason text:',
+      'I am on holiday.',
+      '',
+      'Please expect a delayed response.',
+      '.',
+      ';',
+      '}',
+    ].join('\n');
+
+    const expected = [
+      'require ["vacation"];',
+      '',
+      'if header :contains "X-Spam-Flag" [',
+      '  "YES",',
+      '  "TRUE"',
+      '] {',
+      '  discard;',
+      '} else {',
+      '  vacation :days 7 :reason text:',
+      'I am on holiday.',
+      '',                                   // blank line inside heredoc preserved
+      'Please expect a delayed response.',
+      '.',
+      '  ;',
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(formatDocument(input), expected);
+  });
+
+  it('is idempotent on a formatted vacation rule', () => {
+    const formatted = [
+      'require ["vacation"];',
+      '',
+      'if header :contains "X-Spam-Flag" [',
+      '  "YES",',
+      '  "TRUE"',
+      '] {',
+      '  discard;',
+      '} else {',
+      '  vacation :days 7 :reason text:',
+      'I am on holiday.',
+      '',
+      'Please expect a delayed response.',
+      '.',
+      '  ;',
+      '}',
+    ].join('\n');
+
+    assert.strictEqual(formatDocument(formatted), formatted);
   });
 });

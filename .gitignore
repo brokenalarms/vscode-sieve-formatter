@@ -25,3 +25,5 @@ out/
 
 # Environment variables
 .env
+
+.claude

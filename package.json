@@ -33,10 +33,19 @@
     "onLanguage:sieve"
   ],
   "contributes": {
+    "formatters": [
+      {
+        "language": "sieve",
+        "displayName": "Sieve"
+      }
+    ],
     "languages": [
       {
         "id": "sieve",
-        "aliases": ["Sieve", "sieve"],
+        "aliases": [
+          "Sieve",
+          "sieve"
+        ],
         "extensions": [
           ".sieve"
         ],
@@ -95,14 +104,14 @@
     "test:ci": "npm run lint && npm run compile && npm test"
   },
   "devDependencies": {
-    "@types/mocha": "^10.0.0",
-    "@types/node": "^20.0.0",
-    "@types/vscode": "^1.80.0",
-    "@typescript-eslint/eslint-plugin": "^7.0.0",
-    "@typescript-eslint/parser": "^7.0.0",
-    "eslint": "^8.57.0",
-    "mocha": "^10.0.0",
-    "ts-node": "^10.9.0",
-    "typescript": "^5.6.3"
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.19.33",
+    "@types/vscode": "^1.109.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.1",
+    "mocha": "^10.8.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
   }
 }
