@@ -677,6 +677,77 @@ describe('joinElsifElse', () => {
   });
 });
 
+describe('joinElsifElse — text: heredoc handling', () => {
+  it('does not merge a lone } followed by else inside a heredoc body', () => {
+    const input = [
+      'require ["vacation"];',
+      'vacation :reason text:',
+      '}',
+      'else use this address.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(joinElsifElse(input), input);
+  });
+
+  it('does not merge a lone } followed by elsif inside a heredoc body', () => {
+    const input = [
+      'require ["vacation"];',
+      'vacation :reason text:',
+      '}',
+      'elsif you prefer, call instead.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(joinElsifElse(input), input);
+  });
+
+  it('still merges } + elsif in real code outside the heredoc', () => {
+    const input = [
+      'if header :is "X-Spam" "yes" {',
+      '  discard;',
+      '}',
+      'elsif header :is "X-List" "dev" {',
+      '  fileinto "Dev";',
+      '}',
+      'vacation :reason text:',
+      '}',
+      'else see above.',
+      '.',
+      ';',
+    ].join('\n');
+
+    const expected = [
+      'if header :is "X-Spam" "yes" {',
+      '  discard;',
+      '} elsif header :is "X-List" "dev" {',
+      '  fileinto "Dev";',
+      '}',
+      'vacation :reason text:',
+      '}',
+      'else see above.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(joinElsifElse(input), expected);
+  });
+
+  it('is idempotent on a heredoc containing } / else lines', () => {
+    const input = [
+      'vacation :reason text:',
+      '}',
+      'else try again.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(joinElsifElse(joinElsifElse(input)), input);
+  });
+});
+
 describe('sortRequireExtensions', () => {
   it('sorts extensions alphabetically', () => {
     assert.strictEqual(
@@ -713,6 +784,52 @@ describe('sortRequireExtensions', () => {
       sortRequireExtensions(input),
       'require ["fileinto", "vacation"];'
     );
+  });
+});
+
+describe('sortRequireExtensions — text: heredoc handling', () => {
+  it('does not sort a require-like list inside a heredoc body', () => {
+    const input = [
+      'require ["vacation"];',
+      'vacation :reason text:',
+      'require ["z", "a", "m"] for details.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(sortRequireExtensions(input), input);
+  });
+
+  it('still sorts the real require statement before the heredoc', () => {
+    const input = [
+      'require ["vacation", "fileinto"];',
+      'vacation :reason text:',
+      'require ["z", "a"] in body.',
+      '.',
+      ';',
+    ].join('\n');
+
+    const expected = [
+      'require ["fileinto", "vacation"];',
+      'vacation :reason text:',
+      'require ["z", "a"] in body.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(sortRequireExtensions(input), expected);
+  });
+
+  it('is idempotent on a script with a heredoc', () => {
+    const input = [
+      'require ["fileinto", "vacation"];',
+      'vacation :reason text:',
+      'require ["z", "a"] in body.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(sortRequireExtensions(sortRequireExtensions(input)), input);
   });
 });
 

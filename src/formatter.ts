@@ -500,8 +500,21 @@ export function normalizeBlankLines(text: string): string {
 export function joinElsifElse(text: string): string {
   const lines = text.split('\n');
   const result: string[] = [];
+  let inHeredoc = false;
 
   for (let i = 0; i < lines.length; i++) {
+    if (inHeredoc) {
+      result.push(lines[i]);
+      if (closesHeredoc(lines[i])) inHeredoc = false;
+      continue;
+    }
+
+    if (opensHeredoc(lines[i])) {
+      inHeredoc = true;
+      result.push(lines[i]);
+      continue;
+    }
+
     const trimmed = lines[i].trim();
 
     // Only consider lines that are exactly `}` (no other content).
@@ -537,8 +550,46 @@ export function joinElsifElse(text: string): string {
  *
  * A bare `require "string"` (no brackets) is left unchanged.
  * A single-extension list is left unchanged.
+ *
+ * Lines inside a `text:` heredoc body are skipped so that prose which
+ * happens to start a line with `require [...]` is never re-ordered.
  */
 export function sortRequireExtensions(text: string): string {
+  // Apply only to non-heredoc segments (same principle as all other passes).
+  const lines = text.split('\n');
+  const segments: { lines: string[]; isHeredoc: boolean }[] = [];
+  let currentLines: string[] = [];
+  let inHeredoc = false;
+
+  for (const line of lines) {
+    if (!inHeredoc) {
+      currentLines.push(line);
+      if (opensHeredoc(line)) {
+        inHeredoc = true;
+        segments.push({ lines: currentLines, isHeredoc: false });
+        currentLines = [];
+      }
+    } else {
+      currentLines.push(line);
+      if (closesHeredoc(line)) {
+        inHeredoc = false;
+        segments.push({ lines: currentLines, isHeredoc: true });
+        currentLines = [];
+      }
+    }
+  }
+  if (currentLines.length > 0) {
+    segments.push({ lines: currentLines, isHeredoc: false });
+  }
+
+  return segments
+    .map(({ lines: segLines, isHeredoc }) =>
+      isHeredoc ? segLines.join('\n') : sortRequireExtensionsRaw(segLines.join('\n'))
+    )
+    .join('\n');
+}
+
+function sortRequireExtensionsRaw(text: string): string {
   // Match `require [...]` where the list may span multiple lines.
   // The 'm' flag makes ^ anchor to any line start.
   return text.replace(/^(require\s+\[)([\s\S]*?)(\])/m, (match, open: string, content: string, close: string) => {
