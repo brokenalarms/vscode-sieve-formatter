@@ -348,6 +348,7 @@ export function indentBlocks(text: string, indent: string = '  '): string {
   const lines = text.split('\n');
   let blockLevel = 0;
   let bracketDepth = 0;
+  let parenDepth = 0;
   let inBlockComment = false;
   let inHeredoc = false;
   const result: string[] = [];
@@ -368,8 +369,8 @@ export function indentBlocks(text: string, indent: string = '  '): string {
       continue;
     }
 
-    // Inside a multi-line list — preserve verbatim and track bracket depth.
-    if (bracketDepth > 0) {
+    // Inside a multi-line list or parenthesised argument group — preserve verbatim.
+    if (bracketDepth > 0 || parenDepth > 0) {
       result.push(line);
       bracketDepth +=
         countCharsOutsideStrings(trimmed, '[') -
@@ -377,8 +378,14 @@ export function indentBlocks(text: string, indent: string = '  '): string {
       if (bracketDepth < 0) {
         bracketDepth = 0;
       }
-      // Handle `] {` — list closed and block opened on the same line.
-      if (bracketDepth === 0) {
+      parenDepth +=
+        countCharsOutsideStrings(trimmed, '(') -
+        countCharsOutsideStrings(trimmed, ')');
+      if (parenDepth < 0) {
+        parenDepth = 0;
+      }
+      // Handle `] {` / `) {` — grouping closed and block opened on the same line.
+      if (bracketDepth === 0 && parenDepth === 0) {
         const { effective } = stripLineBlockComments(trimmed);
         const withoutComment = effective.replace(/#.*$/, '').trimEnd();
         if (withoutComment.endsWith('{')) {
@@ -408,6 +415,12 @@ export function indentBlocks(text: string, indent: string = '  '): string {
         if (bracketDepth < 0) {
           bracketDepth = 0;
         }
+        parenDepth +=
+          countCharsOutsideStrings(effective, '(') -
+          countCharsOutsideStrings(effective, ')');
+        if (parenDepth < 0) {
+          parenDepth = 0;
+        }
       }
       continue;
     }
@@ -430,12 +443,18 @@ export function indentBlocks(text: string, indent: string = '  '): string {
       blockLevel++;
     }
 
-    // Track bracket depth so content inside [...] is skipped on subsequent lines.
+    // Track bracket and paren depth so content inside [...] / (...) is preserved.
     bracketDepth +=
       countCharsOutsideStrings(effective, '[') -
       countCharsOutsideStrings(effective, ']');
     if (bracketDepth < 0) {
       bracketDepth = 0;
+    }
+    parenDepth +=
+      countCharsOutsideStrings(effective, '(') -
+      countCharsOutsideStrings(effective, ')');
+    if (parenDepth < 0) {
+      parenDepth = 0;
     }
 
     // If this line opens a text: heredoc, subsequent lines are body content

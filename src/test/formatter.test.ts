@@ -324,6 +324,67 @@ describe('indentBlocks', () => {
     const input = 'require ["fileinto"];\nfileinto "Inbox";';
     assert.strictEqual(indentBlocks(input), input);
   });
+
+  it('preserves lines inside multi-line allof(...) verbatim', () => {
+    const input = [
+      'if allof(',
+      '  header :is "X-Spam" "yes",',
+      '  not header :is "From" "trusted@example.com"',
+      ') {',
+      'fileinto "Spam";',
+      '}',
+    ].join('\n');
+    const expected = [
+      'if allof(',
+      '  header :is "X-Spam" "yes",',
+      '  not header :is "From" "trusted@example.com"',
+      ') {',
+      '  fileinto "Spam";',
+      '}',
+    ].join('\n');
+    assert.strictEqual(indentBlocks(input), expected);
+  });
+
+  it('preserves indentation of [...] lists nested inside allof(...)', () => {
+    const input = [
+      'if allof(',
+      '  header :regex "Subject" [',
+      '    "spam",',
+      '    "offer"',
+      '  ],',
+      '  not header :is "From" "trusted@example.com"',
+      ') {',
+      'fileinto "Spam";',
+      '}',
+    ].join('\n');
+    const expected = [
+      'if allof(',
+      '  header :regex "Subject" [',
+      '    "spam",',
+      '    "offer"',
+      '  ],',
+      '  not header :is "From" "trusted@example.com"',
+      ') {',
+      '  fileinto "Spam";',
+      '}',
+    ].join('\n');
+    assert.strictEqual(indentBlocks(input), expected);
+  });
+
+  it('is idempotent on allof(...) with nested lists', () => {
+    const input = [
+      'if allof(',
+      '  header :regex "Subject" [',
+      '    "spam",',
+      '    "offer"',
+      '  ],',
+      '  not header :is "From" "trusted@example.com"',
+      ') {',
+      '  fileinto "Spam";',
+      '}',
+    ].join('\n');
+    assert.strictEqual(indentBlocks(input), input);
+  });
 });
 
 describe('normalizeBlankLines', () => {
