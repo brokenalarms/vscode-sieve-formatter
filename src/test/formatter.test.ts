@@ -62,6 +62,61 @@ describe('removeTrailingCommas', () => {
   });
 });
 
+describe('removeTrailingCommas — text: heredoc handling', () => {
+  it('does not remove ,] inside a heredoc body', () => {
+    const input = [
+      'vacation :reason text:',
+      'Please reply to the list [members, owners,].',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(removeTrailingCommas(input), input);
+  });
+
+  it('does not remove ,) inside a heredoc body', () => {
+    const input = [
+      'vacation :reason text:',
+      'Call foo(bar,) for details.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(removeTrailingCommas(input), input);
+  });
+
+  it('still removes trailing commas in code outside the heredoc', () => {
+    const input = [
+      'require ["vacation",];',
+      'vacation :reason text:',
+      'body',
+      '.',
+      ';',
+    ].join('\n');
+
+    const expected = [
+      'require ["vacation"];',
+      'vacation :reason text:',
+      'body',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(removeTrailingCommas(input), expected);
+  });
+
+  it('is idempotent on a heredoc with comma-like prose', () => {
+    const input = [
+      'vacation :reason text:',
+      'Items [a, b,] are listed above.',
+      '.',
+      ';',
+    ].join('\n');
+
+    assert.strictEqual(removeTrailingCommas(removeTrailingCommas(input)), input);
+  });
+});
+
 describe('expandListsToMultiline', () => {
   it('expands a 2-item list to multi-line', () => {
     const input = '["item1", "item2"]';

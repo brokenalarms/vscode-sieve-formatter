@@ -161,8 +161,51 @@ function stripLineBlockComments(line: string): { effective: string; opensBlockCo
  *      fileinto("x",)  →  fileinto("x")
  *
  * Commas inside double-quoted strings are never removed.
+ * Lines inside a `text:` heredoc body are preserved verbatim so that
+ * prose containing patterns like `,]` is not corrupted.
  */
 export function removeTrailingCommas(text: string): string {
+  // Split into consecutive heredoc / non-heredoc segments and apply the
+  // character-level pass only to non-heredoc content.  Segments are rejoined
+  // with '\n' which reconstructs the original line boundaries exactly.
+  const lines = text.split('\n');
+  const segments: { lines: string[]; isHeredoc: boolean }[] = [];
+  let currentLines: string[] = [];
+  let inHeredoc = false;
+
+  for (const line of lines) {
+    if (!inHeredoc) {
+      currentLines.push(line);
+      if (opensHeredoc(line)) {
+        inHeredoc = true;
+        segments.push({ lines: currentLines, isHeredoc: false });
+        currentLines = [];
+      }
+    } else {
+      currentLines.push(line);
+      if (closesHeredoc(line)) {
+        inHeredoc = false;
+        segments.push({ lines: currentLines, isHeredoc: true });
+        currentLines = [];
+      }
+    }
+  }
+  if (currentLines.length > 0) {
+    segments.push({ lines: currentLines, isHeredoc: false });
+  }
+
+  return segments
+    .map(({ lines: segLines, isHeredoc }) =>
+      isHeredoc ? segLines.join('\n') : removeTrailingCommasRaw(segLines.join('\n'))
+    )
+    .join('\n');
+}
+
+/**
+ * Core character-by-character trailing-comma removal. Operates on a single
+ * non-heredoc segment of text (may still contain newlines).
+ */
+function removeTrailingCommasRaw(text: string): string {
   let result = '';
   let inString = false;
 

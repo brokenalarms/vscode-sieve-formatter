@@ -3,6 +3,7 @@
   "name": "Sieve",
   "scopeName": "source.sieve",
   "patterns": [
+    { "include": "#heredoc-string" },
     { "include": "#block-comment" },
     { "include": "#line-comment" },
     { "include": "#string" },
@@ -14,6 +15,18 @@
     { "include": "#punctuation" }
   ],
   "repository": {
+    "heredoc-string": {
+      "comment": "text: multi-line string (RFC 5228 §2.4.2). The body ends at a lone '.' on its own line.",
+      "name": "string.unquoted.heredoc.sieve",
+      "begin": "\\btext:\\s*(?:#.*)?$",
+      "end": "^\\.",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.sieve" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.sieve" }
+      }
+    },
     "block-comment": {
       "name": "comment.block.sieve",
       "begin": "/\\*",
